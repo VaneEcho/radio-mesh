@@ -154,7 +154,7 @@ with EM550Driver(host="192.168.1.100") as rx:
 | Phase 0 | 基础框架、数据模型、WebSocket 心跳 | ✅ 完成 |
 | Phase 1 | 边缘扫描引擎 | 🔶 核心完成，任务执行器/实时流待实现 |
 | Phase 2 | 云端数据接收与存储 | 🔶 核心完成，前端查询 API 待完善 |
-| Phase 3 | 前端基础（Vue 3） | 🔲 未启动 |
+| Phase 3 | 前端基础（Vue 3） | 🔶 基础完成，实时推送待实现 |
 | Phase 4 | 频率指配工具 | 🔲 未启动 |
 | Phase 5 | 批量站点扫描 + 实时流 | 🔲 未启动 |
 | Phase 6 | AI 信号分析 | 🔲 未启动 |
@@ -179,27 +179,34 @@ cp edge/config.yaml.template edge/config.yaml
 cd edge && python -m edge.main
 ```
 
-### 完整联调（Edge + Cloud）
+### 完整联调（Edge + Cloud + 前端）
 
 ```bash
-# 1. 启动云端服务（TimescaleDB + FastAPI）
-docker compose up -d
+# 1. 一键启动所有服务（TimescaleDB + Cloud API + 前端）
+docker compose up -d --build
 
 # 2. 配置 Edge 连接云端（编辑 config.yaml）
 #    cloud:
 #      enabled: true
 #      url: http://localhost:8000
-#      token: ""  # 如设置了 API_TOKEN 环境变量则填写
+#      token: ""
 
 # 3. 启动 Edge
 cd edge && python -m edge.main
 
-# 4. 查看在线站点列表
-curl http://localhost:8000/api/v1/stations
+# 打开前端
+open http://localhost:3000
 
-# 5. 查看 API 文档（Swagger UI）
+# Cloud API 文档（Swagger UI）
 open http://localhost:8000/docs
 ```
+
+> 前端开发模式（热更新）：
+> ```bash
+> cd frontend && npm install && npm run dev
+> # 访问 http://localhost:5173
+> # /api 请求自动代理到 http://localhost:8000
+> ```
 
 ### WebSocket 心跳协议
 

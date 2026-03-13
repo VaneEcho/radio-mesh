@@ -15,8 +15,8 @@
 ```
 [██████████] Phase 0  基础框架          ✅ 完成
 [████████░░] Phase 1  边缘扫描引擎       核心完成，任务执行器/实时流待实现
-[██████░░░░] Phase 2  云端数据接收       核心完成，前端查询 API 待完善
-[░░░░░░░░░░] Phase 3  前端基础           未启动
+[██████████] Phase 2  云端数据接收       ✅ 完成
+[████████░░] Phase 3  前端基础           基础完成，实时推送待实现
 [░░░░░░░░░░] Phase 4  频率指配工具       未启动
 [░░░░░░░░░░] Phase 5  批量扫描+实时流    未启动
 [░░░░░░░░░░] Phase 6  AI 信号分析        未启动
@@ -94,13 +94,16 @@
 
 ---
 
-## 待启动
-
 ### Phase 3 — 前端基础
-- [ ] 项目初始化（Vue 3 + Vite + Element Plus + ECharts）
-- [ ] 站点总览仪表盘
-- [ ] WebSocket 客户端（状态实时更新）
-- [ ] 基础布局与路由
+- [x] 项目初始化：`frontend/`（Vue 3 + Vite + Element Plus + ECharts）
+- [x] 站点总览仪表盘（`StationsView.vue`，在线/离线卡片，10s 自动刷新）
+- [x] 频谱查看页（`SpectrumView.vue`，ECharts 折线图，时间范围选择，帧时间线）
+- [x] 频段规则管理页（`BandRulesView.vue`，增删改查）
+- [x] Nginx 反向代理（`/api` → cloud:8000，含 WebSocket，SPA 回退）
+- [x] 前端 Docker 多阶段构建；docker-compose.yml 新增 frontend 服务（:3000）
+- [ ] WebSocket 实时推送（前端订阅站点状态变化，无需轮询）
+
+## 待启动
 
 ### Phase 4 — 频率指配工具
 - [ ] 后端计算接口
@@ -153,3 +156,4 @@
 | 2026-03-13 | v0.5 | 明确 R&S EM550 接口方案（RsInstrument+SCPI）；创建 band_rules.yaml（50条规则，20MHz-8GHz）；设计频段管理后台需求 |
 | 2026-03-13 | v0.6 | Phase 1 核心代码完成（scanner/aggregator/uploader/em550/mock 驱动）；Phase 2 API 骨架完成（FastAPI + ingest/query/band_rules 路由）；docker-compose.yml 开发环境就绪 |
 | 2026-03-13 | v0.7 | Phase 0 完成：stations 表（DB Schema）+ 站点注册 REST API + WebSocket 心跳端点（Cloud）；edge/heartbeat.py 注册+保活线程（Edge）；Phase 0 全部打通 |
+| 2026-03-13 | v0.8 | Phase 3 基础完成：frontend/ Vue 3 项目（站点总览 / 频谱查看 / 频段规则）；Nginx 多阶段 Docker；docker-compose 三服务全栈，localhost:3000 可用 |
