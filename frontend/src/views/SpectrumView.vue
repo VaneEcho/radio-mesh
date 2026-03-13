@@ -193,12 +193,15 @@ function buildChart() {
   window.__rfmeshChart = chart   // handy for debug in browser console
 }
 
+// Zoom threshold: visible range < 5% of total → disable LTTB, show raw points
+const ZOOM_RAW_THRESHOLD = 5
+
+let _cachedData = null
+
 function renderFrame(frame) {
   if (!chart) return
   const { freqs, levels } = decodeFrame(frame)
 
-  // Build [x, y] pairs for ECharts scatter/line dataset
-  // We pass raw arrays and let ECharts do LTTB downsampling
   const data = []
   for (let i = 0; i < freqs.length; i++) {
     data.push([freqs[i], levels[i]])
@@ -206,6 +209,7 @@ function renderFrame(frame) {
 
   const minFreq = freqs[0]
   const maxFreq = freqs[freqs.length - 1]
+  _cachedData = data
 
   chart.setOption({
     backgroundColor: 'transparent',
@@ -247,8 +251,6 @@ function renderFrame(frame) {
     series: [{
       type: 'line',
       data,
-      // LTTB downsampling: ECharts picks ~2000 representative points
-      // automatically when rendering.  No quality loss on important peaks.
       sampling: 'lttb',
       symbol: 'none',
       lineStyle: { color: '#63b3ed', width: 1.2 },
@@ -260,6 +262,16 @@ function renderFrame(frame) {
       },
     }],
   }, true)
+
+  // Adaptive sampling: switch to raw points when zoomed in past threshold
+  chart.off('datazoom')
+  chart.on('datazoom', () => {
+    const option = chart.getOption()
+    const dz = option.dataZoom[0]
+    const visiblePct = (dz.end ?? 100) - (dz.start ?? 0)
+    const sampling = visiblePct < ZOOM_RAW_THRESHOLD ? null : 'lttb'
+    chart.setOption({ series: [{ sampling }] })
+  })
 }
 
 // Re-render whenever currentFrame changes
