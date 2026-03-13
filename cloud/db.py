@@ -72,7 +72,7 @@ def get_conn() -> Generator:
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS spectrum_frames (
-    frame_id        BIGSERIAL PRIMARY KEY,
+    frame_id        BIGSERIAL   NOT NULL,
     station_id      TEXT        NOT NULL,
     period_start    TIMESTAMPTZ NOT NULL,
     period_end      TIMESTAMPTZ NOT NULL,
@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS spectrum_frames (
     freq_start_hz   DOUBLE PRECISION NOT NULL,
     freq_step_hz    DOUBLE PRECISION NOT NULL,
     num_points      INT         NOT NULL,
-    levels_gz       BYTEA       NOT NULL    -- gzip(float32[num_points])
+    levels_gz       BYTEA       NOT NULL,   -- gzip(float32[num_points])
+    PRIMARY KEY (frame_id, period_start)
 );
 
 SELECT create_hypertable(
