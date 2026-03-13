@@ -1,0 +1,59 @@
+# RF·MESH Edge Agent — 站点配置文件
+# 使用方法：复制为 config.yaml，按实际情况修改
+# cp config.yaml.template config.yaml
+
+# ── 站点基本信息 ──────────────────────────────────────────────────────────
+station:
+  id: "site-01"          # 唯一站点 ID（在 Cloud 注册时使用）
+  name: "测试站点"        # 站点名称（仅展示用）
+
+# ── 监测设备 ──────────────────────────────────────────────────────────────
+device:
+  type: em550             # 驱动类型：em550 | rsa306b
+  host: "192.168.1.100"  # 设备 IP 地址
+  port: 5555              # TCP 端口（EM550 默认 5555）
+  timeout_ms: 60000       # 单次命令超时（毫秒）
+
+  # 扫描参数
+  step_hz: 25000          # 步进 / RBW（Hz）；EM550 离散值：25000 推荐
+  detector: "PAVerage"    # 检波器：PAVerage | POSitive | FAST | RMS
+  synth_mode: "FAST"      # 合成器模式：FAST | NORMal | LOWPnoise
+  dwell_s: 0.001          # 每步驻留时间（秒）
+  agc: true               # true = 自动增益；false = 手动，需设置 mgc_dbuv
+  mgc_dbuv: 50.0          # 手动增益值（仅 agc=false 时有效）
+
+# ── 扫描范围 ──────────────────────────────────────────────────────────────
+scan:
+  start_hz: 20000000      # 起始频率（Hz）；EM550 最低 20 MHz
+  stop_hz: 3600000000     # 截止频率（Hz）；EM550 最高 3.6 GHz
+  # 注：full_range = stop_hz - start_hz = 3580 MHz
+  # 以 25kHz 步进共 ~143200 点，驱动层自动分 ~70 段拼接
+
+# ── 频段规则配置 ──────────────────────────────────────────────────────────
+band_rules:
+  path: "../docs/band_rules.yaml"   # 相对于本文件的路径
+  # 也可使用绝对路径：/opt/rfmesh/docs/band_rules.yaml
+
+# ── 聚合上传 ──────────────────────────────────────────────────────────────
+aggregation:
+  interval_s: 60          # 聚合窗口（秒），每 N 秒上传一次统计包
+
+# ── 云端通信 ──────────────────────────────────────────────────────────────
+cloud:
+  enabled: false          # false = 本地落文件，不向云端发送（调试用）
+  url: "http://cloud.example.com"   # 云端服务器地址（cloud.enabled=true 时有效）
+  token: "changeme"       # 认证 Token
+  upload_path: "/api/v1/spectrum/bundle"   # 聚合包上传接口
+  register_path: "/api/v1/stations/register"
+
+# ── 本地调试输出 ──────────────────────────────────────────────────────────
+debug:
+  # cloud.enabled=false 时，聚合包写入此目录（JSON 文件，每分钟一个）
+  output_dir: "./output"
+  # 额外将每次原始频谱帧也写入文件（数据量大，仅调试用）
+  dump_raw_frames: false
+
+# ── 实时流（Phase 5 启用）──────────────────────────────────────────────────
+stream:
+  enabled: false
+  fps: 5
