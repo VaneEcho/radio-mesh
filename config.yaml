@@ -1,0 +1,26 @@
+station:
+  id: station-local
+  name: Local Dev Station
+
+device:
+  type: mock
+  scan_delay_s: 0.0
+  seed: 42
+  step_hz: 25000
+
+scan:
+  start_hz: 87500000    # 87.5 MHz
+  stop_hz:  108000000   # 108 MHz (FM band only, fast for dev)
+
+aggregation:
+  interval_s: 60
+
+cloud:
+  enabled: false
+  url: http://localhost:8000
+  upload_path: /api/v1/spectrum/bundle
+  token: ""
+
+debug:
+  dump_raw_frames: false
+  output_dir: ./output
