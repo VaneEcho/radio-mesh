@@ -38,5 +38,17 @@ services:
     ports:
       - "8000:8000"
 
+  # ── Frontend (Vue 3 + Nginx) ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: rfmesh-frontend
+    restart: unless-stopped
+    depends_on:
+      - cloud
+    ports:
+      - "3000:80"
+
 volumes:
   tsdb_data:
