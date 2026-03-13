@@ -67,6 +67,12 @@ def main() -> None:
     station_name = cfg["station"].get("name", station_id)
     log.info("Station: %s (%s)", station_name, station_id)
 
+    # ── Heartbeat ─────────────────────────────────────────────────────────
+    from .heartbeat import Heartbeat
+
+    heartbeat = Heartbeat(cfg=cfg)
+    heartbeat.start()   # no-op if cloud.enabled=false
+
     # ── Uploader ──────────────────────────────────────────────────────────
     from .uploader import Uploader
 
@@ -91,6 +97,7 @@ def main() -> None:
     try:
         scanner.run()
     finally:
+        heartbeat.stop()
         uploader.stop()
         log.info("Edge agent shut down cleanly.")
 

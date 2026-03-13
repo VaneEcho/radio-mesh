@@ -80,3 +80,23 @@ class BandRuleOut(BandRuleIn):
 class BandRuleListResponse(BaseModel):
     rules: list[BandRuleOut]
     total: int
+
+
+# ── Stations ──────────────────────────────────────────────────────────────────
+
+class StationRegisterIn(BaseModel):
+    """Sent by an edge node on startup to announce itself."""
+    station_id: str
+    name: str
+
+
+class StationRegisterAck(BaseModel):
+    ok: bool = True
+    station_id: str
+
+
+class StationOut(BaseModel):
+    station_id: str
+    name: str
+    last_seen_ms: Optional[int] = None
+    online: bool

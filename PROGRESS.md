@@ -4,18 +4,18 @@
 
 ---
 
-## 当前阶段：需求对齐（宏观设计）
+## 当前阶段：Phase 0–2 主干完成，Edge↔Cloud 注册/心跳/上传全链路打通
 
-整体策略：**先完整对齐宏观设计，再逐步落地代码。** 每个功能模块在编码前须完成接口定义和验收标准的确认。
+整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
 
 ---
 
 ## 整体进度概览
 
 ```
-[██░░░░░░░░] Phase 0  基础框架          文档完成，代码未启动
-[░░░░░░░░░░] Phase 1  边缘扫描引擎       未启动
-[░░░░░░░░░░] Phase 2  云端数据接收       未启动
+[██████████] Phase 0  基础框架          ✅ 完成
+[████████░░] Phase 1  边缘扫描引擎       核心完成，任务执行器/实时流待实现
+[██████░░░░] Phase 2  云端数据接收       核心完成，前端查询 API 待完善
 [░░░░░░░░░░] Phase 3  前端基础           未启动
 [░░░░░░░░░░] Phase 4  频率指配工具       未启动
 [░░░░░░░░░░] Phase 5  批量扫描+实时流    未启动
@@ -31,19 +31,18 @@
 ### 文档
 - [x] `PLAN.md` — 工程任务分解（Phase 划分、目录结构、技术栈选型）
 - [x] `docs/REQUIREMENTS.md` — 需求与设计说明（架构决策、数据模型、接口格式）
+- [x] `docs/band_rules.yaml` — 频段规则初始版本（50 条规则，20 MHz–8 GHz，基于工信部令第62号）
 - [x] `PROGRESS.md` — 本文件
 
 ### 需求对齐（沟通已确认）
 - [x] 整体两层架构：Edge Agent + Cloud Server
 - [x] Edge 主动连接 Cloud（注册制，便于多站点部署）
 - [x] 设备驱动抽象层设计（兼容多厂商，初期适配一款参考设备）
-- [x] **首批适配设备确认**：R&S EM550（第一优先，SCPI over Ethernet，`RsInstrument`）+ RSA306B（第二，USB，`tekrsa-api-wrap`）
+- [x] **首批适配设备确认**：R&S EM550（第一优先，SCPI over Ethernet）+ RSA306B（第二，USB）
 - [x] **R&S 设备接口方案**：`RsInstrument` Python 库（R&S 官方，纯 Socket，无需 VISA，适合 Linux）
-- [x] **EM550 IF 带宽限制已知**：单次 IF 分析 10kHz–9.6MHz，驱动层自动分段步进拼接
-- [x] **频段规则配置**：`docs/band_rules.yaml` 初始版本（50条规则，覆盖 20MHz–8GHz，基于工信部令第62号）
+- [x] **EM550 IF 带宽限制已知**：单次 IF 分析 10 kHz–9.6 MHz，驱动层自动分段拼接
 - [x] **频段管理后台**：需求已设计，后台可视化配置页面（增删改查 + 频谱颜色块预览）
-- [x] 全频段扫描：25 kHz 步进，按频段规划合并后上传
-- [x] 1 分钟聚合包（最大值）上传策略
+- [x] 全频段扫描：25 kHz 步进，1 分钟聚合包（最大值）上传
 - [x] 实时流帧率控制：边缘节流，默认 5 fps，可配置，0 = 最快
 - [x] 三大核心功能：频率指配 / 批量站点扫描 / 历史回放
 - [x] 历史回放两层展示：电平时间线折线图 + 点击查看历史频谱快照
@@ -55,41 +54,47 @@
 - [x] 全频谱快照策略：低频常规存储 + 触发高频存储
 - [x] **前端框架确认**：Vue 3 + Vite + Element Plus + ECharts
 
+### Phase 0 — 基础框架 ✅
+- [x] 技术栈确定：FastAPI + TimescaleDB + PostgreSQL（后端），Vue 3 + ECharts（前端）
+- [x] 项目目录骨架：`edge/` / `cloud/` / `docs/` 结构建立
+- [x] 共享数据模型：`edge/models.py`（SpectrumBundle Pydantic）、`cloud/models.py`（DB ORM）
+- [x] Docker Compose 开发环境：`docker-compose.yml`（cloud + TimescaleDB + PostgreSQL）
+- [x] Edge ↔ Cloud WebSocket 心跳通道（注册 + 保活）
+
+### Phase 1 — 边缘扫描引擎
+- [x] 设备驱动抽象接口：`edge/drivers/base.py`（`BaseSpectrumDriver` + `SpectrumFrame`）
+- [x] EM550 驱动：`edge/drivers/em550.py`（PSCan 自动分段、IFPAN、FSCan、dBµV→dBm）
+- [x] Mock 驱动：`edge/drivers/mock.py`（仿真噪底 + 8 组预置信号，无需硬件）
+- [x] RSA306B 驱动：`edge/drivers/rsa306b.py`（占位，接口已定义）
+- [x] 全频段扫描主循环：`edge/scanner.py`（SIGINT/SIGTERM 优雅退出）
+- [x] 1 分钟聚合器：`edge/aggregator.py`（按窗口合并，最大值保留）
+- [x] 聚合包上传：`edge/uploader.py`（独立线程，Queue，断网本地落文件）
+- [x] 配置文件模板：`edge/config.yaml.template`（em550 / mock 两段注释切换）
+- [ ] 频段合并预处理器（读取 band_rules.yaml，按频段分组上报）
+- [ ] 任务执行器（接收云端指令，暂停常规扫描执行专项任务）
+- [ ] 实时流发送模块（WebSocket 推送，含帧率节流）
+
+### Phase 2 — 云端数据接收与存储
+- [x] FastAPI 应用骨架：`cloud/main.py`（路由挂载、CORS、lifespan）
+- [x] 聚合包接收 API：`cloud/routers/ingest.py`（`POST /api/v1/spectrum/bundle`）
+- [x] 数据查询 API：`cloud/routers/query.py`（时段 / 频段 / 站点查询）
+- [x] 频段规则 API：`cloud/routers/band_rules.py`（增删改查）
+- [x] Dockerfile + 依赖：`cloud/Dockerfile`、`cloud/requirements.txt`
+- [x] 数据库 Schema 初始化（`spectrum_frames` TimescaleDB 超表 + `band_rules` + `stations` 建表，应用启动自动执行）
+- [x] 站点注册与心跳管理 API（`POST /api/v1/stations/register`，`WS /api/v1/stations/{id}/ws`）
+
 ---
 
 ## 进行中
 
 ### 需求对齐（待进一步讨论）
-- [ ] 获取 EM550 编程手册 SCPI 命令集（联系 R&S 销售）
+- [ ] 获取 EM550 编程手册 SCPI 命令集完整版（联系 R&S 销售）
 - [ ] 台站信号库初始数据来源（空库 or 已有历史数据可导入）
-- [ ] `band_rules.yaml` 中省/地方权限字段的细化（部分频段需结合实际部署地情况填写）
+- [ ] `band_rules.yaml` 中省/地方权限字段的细化
 
 ---
 
 ## 待启动
-
-### Phase 0 — 基础框架
-- [ ] 确定技术栈（后端语言/框架、前端框架）
-- [ ] 创建项目目录骨架
-- [ ] 定义共享数据模型（Pydantic Schema / JSON Schema）
-- [ ] Edge ↔ Cloud WebSocket 心跳通道实现
-- [ ] Docker Compose 开发环境（Cloud 服务）
-
-### Phase 1 — 边缘扫描引擎
-- [ ] 设备驱动抽象接口定义
-- [ ] 参考设备驱动实现（含 Mock 模拟器）
-- [ ] 全频段扫描主循环
-- [ ] 频段合并预处理器（读取配置文件）
-- [ ] 1 分钟聚合器
-- [ ] 聚合包上传（含断网缓存补传）
-- [ ] 任务执行器（接收云端指令，暂停常规扫描）
-- [ ] 实时流发送模块（含帧率节流）
-
-### Phase 2 — 云端数据接收与存储
-- [ ] 数据库 Schema 初始化（TimescaleDB + PostgreSQL）
-- [ ] 聚合包接收 API
-- [ ] 站点注册与心跳管理
-- [ ] 数据查询 API（时段 / 频段 / 站点）
 
 ### Phase 3 — 前端基础
 - [ ] 项目初始化（Vue 3 + Vite + Element Plus + ECharts）
@@ -146,3 +151,5 @@
 | 2026-03-13 | v0.3 | 新增 PROGRESS.md，拆分 Phase 7（历史回放）和 Phase 8（信号库）为独立阶段 |
 | 2026-03-13 | v0.4 | 确认设备（EM550 + RSA306B）、AI 多后端策略、数据保留 3 个月、前端 Vue 3 + ECharts |
 | 2026-03-13 | v0.5 | 明确 R&S EM550 接口方案（RsInstrument+SCPI）；创建 band_rules.yaml（50条规则，20MHz-8GHz）；设计频段管理后台需求 |
+| 2026-03-13 | v0.6 | Phase 1 核心代码完成（scanner/aggregator/uploader/em550/mock 驱动）；Phase 2 API 骨架完成（FastAPI + ingest/query/band_rules 路由）；docker-compose.yml 开发环境就绪 |
+| 2026-03-13 | v0.7 | Phase 0 完成：stations 表（DB Schema）+ 站点注册 REST API + WebSocket 心跳端点（Cloud）；edge/heartbeat.py 注册+保活线程（Edge）；Phase 0 全部打通 |
