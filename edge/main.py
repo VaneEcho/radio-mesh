@@ -67,14 +67,6 @@ def main() -> None:
     station_name = cfg["station"].get("name", station_id)
     log.info("Station: %s (%s)", station_name, station_id)
 
-    # ── Band rules ────────────────────────────────────────────────────────
-    from .preprocessor import Preprocessor
-
-    rules_path_raw = cfg.get("band_rules", {}).get("path", "../docs/band_rules.yaml")
-    rules_path = (cfg_path.parent / rules_path_raw).resolve()
-    log.info("Loading band rules: %s", rules_path)
-    preprocessor = Preprocessor(rules_path)
-
     # ── Uploader ──────────────────────────────────────────────────────────
     from .uploader import Uploader
 
@@ -93,7 +85,7 @@ def main() -> None:
     # ── Scanner ───────────────────────────────────────────────────────────
     from .scanner import Scanner
 
-    scanner = Scanner(cfg=cfg, preprocessor=preprocessor, uploader=uploader)
+    scanner = Scanner(cfg=cfg, uploader=uploader)
 
     log.info("Starting scan loop …  (Ctrl-C to stop)")
     try:

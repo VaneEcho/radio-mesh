@@ -11,7 +11,7 @@ Usage
 from edge.drivers import EM550Driver
 
 with EM550Driver(host="192.168.1.100") as rx:
-    frame = rx.scan_range(88e6, 108e6, step_hz=25_000, station_id="site-01")
+    frame = rx.band_scan(20e6, 3600e6, step_hz=25_000, station_id="site-01")
 """
 from .base import BaseSpectrumDriver, SpectrumFrame
 from .em550 import EM550Driver

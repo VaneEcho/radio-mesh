@@ -1,7 +1,7 @@
 """
 Bundle Uploader
 ===============
-Receives AggregatedBundles from the aggregator and either:
+Receives SpectrumBundles from the aggregator and either:
   A) POSTs them to the Cloud REST API  (cloud.enabled = true)
   B) Writes them as JSON files locally  (cloud.enabled = false, debug mode)
 
@@ -20,9 +20,8 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-from .models import AggregatedBundle
+from .models import SpectrumBundle
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ class Uploader:
         self._token = token
         self._output_dir = Path(output_dir)
 
-        self._queue: queue.Queue[AggregatedBundle] = queue.Queue(maxsize=_QUEUE_MAX)
+        self._queue: queue.Queue[SpectrumBundle] = queue.Queue(maxsize=_QUEUE_MAX)
         self._thread = threading.Thread(
             target=self._worker, name="uploader", daemon=True
         )
@@ -80,7 +79,7 @@ class Uploader:
         self._stop_event.set()
         self._thread.join(timeout=10)
 
-    def submit(self, bundle: AggregatedBundle) -> None:
+    def submit(self, bundle: SpectrumBundle) -> None:
         """
         Enqueue a bundle for upload.  Non-blocking: if the queue is full the
         oldest entry is dropped to make room.
@@ -114,7 +113,7 @@ class Uploader:
 
             self._queue.task_done()
 
-    def _upload_with_retry(self, bundle: AggregatedBundle) -> None:
+    def _upload_with_retry(self, bundle: SpectrumBundle) -> None:
         import urllib.request
         import urllib.error
 
@@ -135,9 +134,10 @@ class Uploader:
                     status = resp.status
                 if status in (200, 201, 204):
                     log.info(
-                        "Uploaded bundle %s (%d channels) → HTTP %d",
+                        "Uploaded bundle %s (%d bins, %d sweeps) → HTTP %d",
                         _ts_str(bundle.period_start_ms),
-                        len(bundle.channels),
+                        bundle.num_points,
+                        bundle.sweep_count,
                         status,
                     )
                     return
@@ -160,7 +160,7 @@ class Uploader:
         )
         self._write_local(bundle)
 
-    def _write_local(self, bundle: AggregatedBundle) -> None:
+    def _write_local(self, bundle: SpectrumBundle) -> None:
         ts = datetime.fromtimestamp(
             bundle.period_start_ms / 1000, tz=timezone.utc
         )
@@ -174,8 +174,8 @@ class Uploader:
                 encoding="utf-8",
             )
             log.info(
-                "Bundle saved locally: %s (%d channels)",
-                filename, len(bundle.channels),
+                "Bundle saved locally: %s (%d bins, %d sweeps)",
+                filename, bundle.num_points, bundle.sweep_count,
             )
         except OSError as exc:
             log.error("Failed to write bundle %s: %s", filename, exc)

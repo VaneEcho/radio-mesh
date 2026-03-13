@@ -4,12 +4,11 @@ Main Scan Loop
 Orchestrates the continuous spectrum monitoring cycle:
 
   while True:
-    1. Call driver.scan_range() → SpectrumFrame
-    2. Pass frame to preprocessor  → list[ChannelSample]
-    3. Pass samples to aggregator.update()
-    4. aggregator.tick() → fires AggregatedBundle every interval_s
-    5. (bundle handed to uploader via on_bundle callback)
-    6. Log progress
+    1. Call driver.band_scan() → SpectrumFrame
+    2. Pass frame to aggregator.update()
+    3. aggregator.tick() → fires SpectrumBundle every interval_s
+    4. (bundle handed to uploader via on_bundle callback)
+    5. Log progress
 
 The loop is intentionally synchronous and single-threaded.  Upload happens
 in a separate daemon thread (Uploader).  Graceful shutdown on SIGINT/SIGTERM.
@@ -24,8 +23,7 @@ from typing import Optional
 
 from .aggregator import Aggregator
 from .drivers import EM550Driver, BaseSpectrumDriver
-from .models import AggregatedBundle
-from .preprocessor import Preprocessor
+from .models import SpectrumBundle
 from .uploader import Uploader
 
 log = logging.getLogger(__name__)
@@ -64,8 +62,6 @@ class Scanner:
     ----------
     cfg : dict
         Parsed config.yaml content.
-    preprocessor : Preprocessor
-        Loaded band-rules preprocessor.
     uploader : Uploader
         Running uploader instance.
     """
@@ -73,11 +69,9 @@ class Scanner:
     def __init__(
         self,
         cfg: dict,
-        preprocessor: Preprocessor,
         uploader: Uploader,
     ) -> None:
         self._cfg = cfg
-        self._pre = preprocessor
         self._uploader = uploader
 
         station_id = cfg["station"]["id"]
@@ -136,11 +130,11 @@ class Scanner:
     # ── Internal ─────────────────────────────────────────────────────────
 
     def _sweep(self, driver: BaseSpectrumDriver) -> None:
-        """Execute one full scan and update the aggregator."""
+        """Execute one full band scan and update the aggregator."""
         t0 = time.monotonic()
 
         try:
-            frame = driver.scan_range(
+            frame = driver.band_scan(
                 start_hz=self._start_hz,
                 stop_hz=self._stop_hz,
                 step_hz=self._step_hz,
@@ -166,19 +160,17 @@ class Scanner:
         if self._dump_raw:
             _dump_frame(frame, self._cfg.get("debug", {}).get("output_dir", "./output"))
 
-        samples = self._pre.process(frame)
-        log.debug("Sweep #%d → %d channel samples", self._sweep_count, len(samples))
-
-        self._aggregator.update(samples)
+        self._aggregator.update(frame)
         self._aggregator.tick()
 
-    def _on_bundle(self, bundle: AggregatedBundle) -> None:
+    def _on_bundle(self, bundle: SpectrumBundle) -> None:
         """Called by aggregator when a 1-minute window closes."""
         log.info(
-            "Bundle ready: station=%s period=%s channels=%d",
+            "Bundle ready: station=%s period=%s bins=%d sweeps=%d",
             bundle.station_id,
             _period_str(bundle),
-            len(bundle.channels),
+            bundle.num_points,
+            bundle.sweep_count,
         )
         self._uploader.submit(bundle)
 
@@ -193,7 +185,7 @@ class Scanner:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _period_str(bundle: AggregatedBundle) -> str:
+def _period_str(bundle: SpectrumBundle) -> str:
     from datetime import datetime, timezone
     start = datetime.fromtimestamp(bundle.period_start_ms / 1000, tz=timezone.utc)
     end = datetime.fromtimestamp(bundle.period_end_ms / 1000, tz=timezone.utc)
