@@ -22,8 +22,8 @@ Usage example:
     from edge.drivers.em550 import EM550Driver
 
     with EM550Driver(host="192.168.1.100") as rx:
-        frame = rx.scan_range(
-            start_hz=88e6, stop_hz=108e6, step_hz=25_000,
+        frame = rx.band_scan(
+            start_hz=20e6, stop_hz=3600e6, step_hz=25_000,
             station_id="site-01",
         )
         print(frame.levels_dbm)
@@ -33,7 +33,6 @@ from __future__ import annotations
 import logging
 import math
 import time
-from typing import Optional
 
 import numpy as np
 
@@ -212,16 +211,16 @@ class EM550Driver(BaseSpectrumDriver):
 
     # ── Public scan API ──────────────────────────────────────────────────
 
-    def scan_range(
+    def band_scan(
         self,
         start_hz: float,
         stop_hz: float,
-        step_hz: Optional[float] = None,
+        step_hz: float = 25_000,
         station_id: str = "",
         task_id: str = "",
     ) -> SpectrumFrame:
         """
-        Sweep start_hz → stop_hz and return a stitched SpectrumFrame.
+        Wideband panoramic sweep start_hz → stop_hz (PSCan mode).
 
         The EM550 PSCan mode is limited to 2 048 points per acquisition.
         This method automatically splits the requested range into segments
@@ -231,11 +230,11 @@ class EM550Driver(BaseSpectrumDriver):
         """
         self._require_connected()
 
-        step = _nearest_pscan_step(step_hz if step_hz is not None else self._default_step_hz)
+        step = _nearest_pscan_step(step_hz)
         start_hz = max(start_hz, _FREQ_MIN_HZ)
         stop_hz = min(stop_hz, _FREQ_MAX_HZ)
 
-        if step_hz is not None and step != step_hz:
+        if step != step_hz:
             log.debug(
                 "Requested step %.0f Hz rounded to nearest valid value %.0f Hz",
                 step_hz, step,
@@ -273,7 +272,7 @@ class EM550Driver(BaseSpectrumDriver):
             driver="em550",
         )
 
-    def scan_ifpan(
+    def if_analysis(
         self,
         center_hz: float,
         span_hz: float,
@@ -281,11 +280,10 @@ class EM550Driver(BaseSpectrumDriver):
         task_id: str = "",
     ) -> SpectrumFrame:
         """
-        IF-panorama scan centred on center_hz with the given span.
+        IF-panorama analysis centred on center_hz (CW + IFPAN mode).
 
-        Uses the IFPAN trace (software option EM550SU or EM550IM required).
-        Always returns exactly 2 049 points.  Useful for detailed analysis
-        of a narrow frequency band around a signal of interest.
+        Requires software option EM550SU or EM550IM.
+        Always returns exactly 2 049 points.
 
         Args:
             center_hz : Centre frequency in Hz.
@@ -330,6 +328,100 @@ class EM550Driver(BaseSpectrumDriver):
             levels_dbm=levels_dbm,
             task_id=task_id,
             driver="em550-ifpan",
+        )
+
+    def channel_scan(
+        self,
+        start_hz: float,
+        stop_hz: float,
+        step_hz: float,
+        demod_bw_hz: float,
+        station_id: str = "",
+        task_id: str = "",
+    ) -> SpectrumFrame:
+        """
+        Channel-by-channel sweep using FSCan mode.
+
+        step_hz defines the channel spacing; demod_bw_hz sets the
+        demodulation bandwidth and must be ≤ step_hz to avoid
+        adjacent-channel bleed.
+
+        Args:
+            start_hz:    First channel centre frequency in Hz.
+            stop_hz:     Last channel centre frequency in Hz.
+            step_hz:     Channel spacing in Hz.
+            demod_bw_hz: Demodulation bandwidth in Hz (≤ step_hz).
+        """
+        self._require_connected()
+
+        start_hz = max(start_hz, _FREQ_MIN_HZ)
+        stop_hz = min(stop_hz, _FREQ_MAX_HZ)
+
+        if demod_bw_hz > step_hz:
+            log.warning(
+                "channel_scan: demod_bw_hz (%.0f) > step_hz (%.0f) — "
+                "adjacent channel bleed likely",
+                demod_bw_hz, step_hz,
+            )
+
+        expected_points = math.ceil((stop_hz - start_hz) / step_hz) + 1
+
+        log.debug(
+            "FSCan %.3f–%.3f MHz, step=%.0f Hz, demod_bw=%.0f Hz (%d channels)",
+            start_hz / 1e6, stop_hz / 1e6, step_hz, demod_bw_hz, expected_points,
+        )
+
+        w = self._instr.write
+        q = self._instr.query_str
+
+        w("SENSe:FREQuency:MODE FSCan")
+        w(f"SENSe:FREQuency:FSCan:STARt {start_hz:.0f}")
+        w(f"SENSe:FREQuency:FSCan:STOP {stop_hz:.0f}")
+        w(f"SENSe:FREQuency:FSCan:STEP {step_hz:.0f}")
+        w(f"SENSe:BANDwidth:DEModulation {demod_bw_hz:.0f}")
+
+        w("TRACe:FEED:CONTrol FTRACE, ALWays")
+        w("ABORt")
+        w("INITiate:IMMediate")
+        self._wait_sweep_complete()
+
+        raw = q("TRACe? FTRACE")
+        if not raw or not raw.strip():
+            log.warning("Empty FTRACE response — returning NaN array")
+            levels_dbm = np.full(expected_points, np.nan, dtype=np.float32)
+            return SpectrumFrame(
+                station_id=station_id,
+                timestamp_ms=SpectrumFrame.now_ms(),
+                freq_start_hz=float(start_hz),
+                freq_step_hz=float(step_hz),
+                levels_dbm=levels_dbm,
+                task_id=task_id,
+                driver="em550-fscan",
+            )
+
+        levels_dbuv = _parse_ascii_floats(raw)
+
+        # Strip INF boundary markers
+        valid_mask = levels_dbuv < _INF_THRESHOLD
+        levels_dbuv = levels_dbuv[valid_mask]
+
+        # Trim / pad to expected length
+        if len(levels_dbuv) > expected_points:
+            levels_dbuv = levels_dbuv[:expected_points]
+        elif len(levels_dbuv) < expected_points:
+            pad = np.full(expected_points - len(levels_dbuv), np.nan, dtype=np.float32)
+            levels_dbuv = np.concatenate([levels_dbuv, pad])
+
+        levels_dbm = (levels_dbuv + _DBUV_TO_DBM).astype(np.float32)
+
+        return SpectrumFrame(
+            station_id=station_id,
+            timestamp_ms=SpectrumFrame.now_ms(),
+            freq_start_hz=float(start_hz),
+            freq_step_hz=float(step_hz),
+            levels_dbm=levels_dbm,
+            task_id=task_id,
+            driver="em550-fscan",
         )
 
     # ── Utility / setup ──────────────────────────────────────────────────

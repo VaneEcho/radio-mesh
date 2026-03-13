@@ -1,15 +1,19 @@
 """
 Abstract base class for all spectrum monitoring device drivers.
 
-Each driver must implement scan_range() and return SpectrumFrame objects.
-Upper layers (scan engine, preprocessor) only ever see this interface —
-they are unaware of which physical device is connected.
+Each driver must implement the three standard operations:
+  - band_scan()    : PSCan wideband sweep (primary loop operation)
+  - if_analysis()  : IF-panorama narrow-band analysis (CW + IFPAN)
+  - channel_scan() : Channel-by-channel sweep with demod BW (FSCan mode)
+
+Upper layers only ever see this interface — they are unaware of which
+physical device is connected.
 """
 from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -45,8 +49,8 @@ class SpectrumFrame:
 
 class BaseSpectrumDriver(ABC):
     """
-    Abstract spectrum driver.  Subclasses implement connect / disconnect /
-    scan_range and expose hardware limits as properties.
+    Abstract spectrum driver.  Subclasses implement connect / disconnect and
+    the three standard scan operations.
     """
 
     # ── connection lifecycle ──────────────────────────────────────────────
@@ -66,10 +70,10 @@ class BaseSpectrumDriver(ABC):
     def __exit__(self, *_):
         self.disconnect()
 
-    # ── core scan ────────────────────────────────────────────────────────
+    # ── Operation 1: Band Scan (PSCan) ───────────────────────────────────
 
     @abstractmethod
-    def scan_range(
+    def band_scan(
         self,
         start_hz: float,
         stop_hz: float,
@@ -78,19 +82,77 @@ class BaseSpectrumDriver(ABC):
         task_id: str = "",
     ) -> SpectrumFrame:
         """
-        Sweep the spectrum from start_hz to stop_hz with the given step.
+        Wideband panoramic sweep from start_hz to stop_hz.
 
-        The driver may internally segment the sweep to accommodate hardware
-        limits (e.g. maximum points per acquisition).  The caller always
-        receives a single stitched SpectrumFrame.
+        Uses PSCan mode.  The driver may internally segment the sweep to
+        accommodate hardware limits (e.g. max points per acquisition) and
+        returns a single stitched SpectrumFrame.
 
         Args:
             start_hz:   Sweep start frequency in Hz.
             stop_hz:    Sweep stop frequency in Hz (inclusive).
-            step_hz:    Desired frequency step in Hz.  The driver may
-                        round to the nearest hardware-supported value.
+            step_hz:    Desired frequency step / RBW in Hz.  The driver
+                        rounds to the nearest hardware-supported value.
             station_id: Passed through into the returned SpectrumFrame.
             task_id:    Passed through into the returned SpectrumFrame.
+
+        Returns:
+            SpectrumFrame with levels in dBm.
+        """
+
+    # ── Operation 2: IF Analysis (CW + IFPAN) ────────────────────────────
+
+    @abstractmethod
+    def if_analysis(
+        self,
+        center_hz: float,
+        span_hz: float,
+        station_id: str = "",
+        task_id: str = "",
+    ) -> SpectrumFrame:
+        """
+        Narrow-band IF-panorama analysis centred on center_hz.
+
+        Uses CW + IFPAN mode (requires hardware option EM550SU or EM550IM on
+        the EM550).  Suitable for detailed analysis of a specific signal.
+
+        Args:
+            center_hz : Centre frequency in Hz.
+            span_hz   : IF panorama span in Hz (rounded to nearest valid value).
+            station_id: Passed through into the returned SpectrumFrame.
+            task_id:    Passed through into the returned SpectrumFrame.
+
+        Returns:
+            SpectrumFrame with levels in dBm (fixed number of points per driver).
+        """
+
+    # ── Operation 3: Channel Scan (FSCan) ────────────────────────────────
+
+    @abstractmethod
+    def channel_scan(
+        self,
+        start_hz: float,
+        stop_hz: float,
+        step_hz: float,
+        demod_bw_hz: float,
+        station_id: str = "",
+        task_id: str = "",
+    ) -> SpectrumFrame:
+        """
+        Channel-by-channel frequency scan with a separate demodulation BW.
+
+        Uses FSCan (frequency scan / sweep) mode.  step_hz defines channel
+        spacing; demod_bw_hz must be < step_hz to avoid adjacent-channel bleed.
+        Suitable for monitoring well-defined channel plans.
+
+        Args:
+            start_hz:    First channel centre frequency in Hz.
+            stop_hz:     Last channel centre frequency in Hz (inclusive).
+            step_hz:     Channel spacing in Hz.
+            demod_bw_hz: Demodulation / measurement bandwidth in Hz.
+                         Must be ≤ step_hz.
+            station_id:  Passed through into the returned SpectrumFrame.
+            task_id:     Passed through into the returned SpectrumFrame.
 
         Returns:
             SpectrumFrame with levels in dBm.
@@ -113,6 +175,6 @@ class BaseSpectrumDriver(ABC):
     def max_span_per_segment_hz(self) -> float:
         """
         Maximum frequency span that can be captured in a single hardware
-        acquisition.  scan_range() uses this to decide how many segments
+        acquisition.  band_scan() uses this to decide how many segments
         are needed.
         """
