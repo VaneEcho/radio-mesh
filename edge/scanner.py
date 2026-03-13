@@ -22,7 +22,7 @@ from types import FrameType
 from typing import Optional
 
 from .aggregator import Aggregator
-from .drivers import EM550Driver, BaseSpectrumDriver
+from .drivers import EM550Driver, MockDriver, BaseSpectrumDriver
 from .models import SpectrumBundle
 from .uploader import Uploader
 
@@ -50,6 +50,12 @@ def _build_driver(cfg: dict) -> BaseSpectrumDriver:
     if dtype == "rsa306b":
         from .drivers import RSA306BDriver
         return RSA306BDriver()
+
+    if dtype == "mock":
+        return MockDriver(
+            scan_delay_s=float(dev.get("scan_delay_s", 0.0)),
+            seed=dev.get("seed", None),
+        )
 
     raise ValueError(f"Unknown device type: {dtype!r}")
 
