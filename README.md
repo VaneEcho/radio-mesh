@@ -45,18 +45,36 @@ radio-mesh/
 │   ├── drivers/                 # 设备驱动层
 │   │   ├── base.py              # BaseSpectrumDriver 抽象接口 + SpectrumFrame
 │   │   ├── em550.py             # R&S EM550 SCPI 驱动（已实现）
+│   │   ├── mock.py              # Mock 驱动（仿真数据，无需硬件）
 │   │   └── rsa306b.py           # Tektronix RSA306B 驱动（占位）
+│   ├── aggregator.py            # 1 分钟滑动窗口聚合（最大值保留）
+│   ├── heartbeat.py             # 注册 + WebSocket 心跳保活线程
+│   ├── main.py                  # 入口（扫描 + 聚合 + 上传 + 心跳）
+│   ├── models.py                # SpectrumBundle Pydantic 模型
+│   ├── scanner.py               # 扫描主循环（优雅退出）
+│   ├── uploader.py              # 上传线程（Queue，断网落本地文件）
+│   ├── config.yaml.template     # 配置模板（em550 / mock 两段注释切换）
+│   └── requirements.txt
+├── cloud/                       # 云端后端（Python + FastAPI）
+│   ├── routers/
+│   │   ├── band_rules.py        # 频段规则增删改查 API
+│   │   ├── ingest.py            # 聚合包接收 API（POST /api/v1/spectrum/bundle）
+│   │   ├── query.py             # 历史数据查询 API
+│   │   └── stations.py          # 站点注册 + WebSocket 心跳端点
+│   ├── db.py                    # TimescaleDB 连接池 + Schema + CRUD
+│   ├── main.py                  # FastAPI 应用入口（路由挂载、CORS、lifespan）
+│   ├── models.py                # Pydantic 请求/响应模型
+│   ├── Dockerfile
 │   └── requirements.txt
 ├── docs/
 │   ├── REQUIREMENTS.md          # 需求与架构设计说明（详细）
 │   ├── band_rules.yaml          # 频段规则初始配置（50条，20MHz–8GHz）
 │   └── ...
+├── docker-compose.yml           # 开发环境（cloud + TimescaleDB）
 ├── PLAN.md                      # 工程任务分解（Phase 0–8）
 ├── PROGRESS.md                  # 开发进度追踪
 └── README.md                    # 本文件
 ```
-
-> 云端后端（FastAPI）、前端（Vue 3）目录在 Phase 0 基础框架阶段创建。
 
 ---
 
@@ -129,13 +147,13 @@ with EM550Driver(host="192.168.1.100") as rx:
 
 ## 开发进度
 
-详见 [PROGRESS.md](PROGRESS.md)。当前阶段：**Phase 0 基础框架**。
+详见 [PROGRESS.md](PROGRESS.md)。
 
 | Phase | 内容 | 状态 |
 |-------|------|------|
-| Phase 0 | 基础框架、数据模型、WebSocket 心跳 | 🔲 未启动 |
-| Phase 1 | 边缘扫描引擎（驱动层已完成） | 🔲 未启动 |
-| Phase 2 | 云端数据接收与存储 | 🔲 未启动 |
+| Phase 0 | 基础框架、数据模型、WebSocket 心跳 | ✅ 完成 |
+| Phase 1 | 边缘扫描引擎 | 🔶 核心完成，任务执行器/实时流待实现 |
+| Phase 2 | 云端数据接收与存储 | 🔶 核心完成，前端查询 API 待完善 |
 | Phase 3 | 前端基础（Vue 3） | 🔲 未启动 |
 | Phase 4 | 频率指配工具 | 🔲 未启动 |
 | Phase 5 | 批量站点扫描 + 实时流 | 🔲 未启动 |
@@ -147,11 +165,59 @@ with EM550Driver(host="192.168.1.100") as rx:
 
 ## 本地开发
 
+### 快速启动（无硬件 Mock 模式）
+
 ```bash
-# 边缘节点依赖
+# 1. 边缘节点依赖
 pip install -r edge/requirements.txt
 
-# 连接测试（Telnet 验证 EM550 通信，默认端口 5555）
+# 2. 复制并编辑配置（选择 mock driver）
+cp edge/config.yaml.template edge/config.yaml
+# 编辑 config.yaml，确保 driver: mock 段取消注释
+
+# 3. 启动边缘节点（本地 mock 模式，不需要云端）
+cd edge && python -m edge.main
+```
+
+### 完整联调（Edge + Cloud）
+
+```bash
+# 1. 启动云端服务（TimescaleDB + FastAPI）
+docker compose up -d
+
+# 2. 配置 Edge 连接云端（编辑 config.yaml）
+#    cloud:
+#      enabled: true
+#      url: http://localhost:8000
+#      token: ""  # 如设置了 API_TOKEN 环境变量则填写
+
+# 3. 启动 Edge
+cd edge && python -m edge.main
+
+# 4. 查看在线站点列表
+curl http://localhost:8000/api/v1/stations
+
+# 5. 查看 API 文档（Swagger UI）
+open http://localhost:8000/docs
+```
+
+### WebSocket 心跳协议
+
+Edge 与 Cloud 之间保持一条长连接（`WS /api/v1/stations/{station_id}/ws`），用于在线状态维护，后续 Phase 5 的任务下发也走这条通道。
+
+```
+Edge 启动
+  ├─ POST /api/v1/stations/register   ← 注册（幂等，重启安全）
+  └─ WS  /api/v1/stations/site-01/ws
+       ├─ 每 30s  Edge → Cloud: {"type": "ping", "ts": <unix_ms>}
+       ├─ 立即    Cloud → Edge: {"type": "pong", "ts": <unix_ms>}
+       └─ 断线自动重连（5s → 10s → 20s … 最大 60s 退避）
+```
+
+### 设备连接测试
+
+```bash
+# Telnet 验证 EM550 通信（默认端口 5555）
 telnet <设备IP> 5555
 # 输入：*IDN?  回车，应返回设备标识字符串
 ```
