@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+
+  # ── TimescaleDB ─────────────────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: rfmesh-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rfmesh
+      POSTGRES_USER: rfmesh
+      POSTGRES_PASSWORD: rfmesh
+    ports:
+      - "5432:5432"
+    volumes:
+      - tsdb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rfmesh -d rfmesh"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Cloud API (FastAPI) ──────────────────────────────────────────────────────
+  cloud:
+    build:
+      context: .
+      dockerfile: cloud/Dockerfile
+    container_name: rfmesh-cloud
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://rfmesh:rfmesh@timescaledb:5432/rfmesh
+      API_TOKEN: ""          # set a strong token in production
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+
+volumes:
+  tsdb_data:
