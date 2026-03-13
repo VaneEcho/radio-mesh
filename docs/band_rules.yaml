@@ -1,0 +1,630 @@
+# RF·MESH 频段规则配置文件
+# 版本：v0.1 | 生效日期：2026-03-13
+#
+# 依据：《中华人民共和国无线电频率划分规定》（工信部令第62号，2023年7月1日施行）
+#       及各运营商、行业标准公开资料整理
+#
+# 字段说明：
+#   freq_start_mhz        频段起始频率（MHz）
+#   freq_end_mhz          频段结束频率（MHz）
+#   service_name          业务中文名称
+#   service_type          业务大类（枚举）
+#   channel_bw_khz        聚合粒度（kHz）—— 用于频谱数据合并上传
+#   authority             管理权限层级（national=国家 / provincial=省 / local=地方）
+#   operator              运营商（移动通信频段专用，其余留空）
+#   description           补充说明
+#   anomaly_bw_threshold_khz  信号带宽超出此值时触发异常检测（null=不检测）
+#   enabled               是否启用（false=跳过此频段不处理）
+#
+# 注意事项：
+#   1. 同一频率点可能出现多条规则（如上行/下行分离的移动通信频段），以 sub_band 字段区分
+#   2. channel_bw_khz 对于整段聚合（如运营商频段）设为 freq_end_mhz - freq_start_mhz 的 MHz 换算值
+#   3. 此文件可通过系统后台管理页面维护，也可直接编辑后重新导入
+# ─────────────────────────────────────────────────────────────────────────────
+
+bands:
+
+  # ───────────────────────── VHF 低频段 ─────────────────────────
+  - id: 1
+    freq_start_mhz: 20.0
+    freq_end_mhz: 87.5
+    service_name: VHF低频（短波过渡、政府、军事等）
+    service_type: government
+    channel_bw_khz: 100
+    authority: national
+    description: 含短波广播（部分）、政府专用、军事通信等，具体分配较复杂，以100kHz步进聚合保留基本分辨率
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── FM广播 ─────────────────────────
+  - id: 2
+    freq_start_mhz: 87.5
+    freq_end_mhz: 108.0
+    service_name: FM广播
+    service_type: broadcasting
+    channel_bw_khz: 200
+    authority: national
+    description: 调频广播，标准信道间隔100kHz，信号带宽约200kHz（含保护带），聚合粒度取200kHz
+    anomaly_bw_threshold_khz: 400
+    enabled: true
+
+  # ───────────────────────── 航空导航 ─────────────────────────
+  - id: 3
+    freq_start_mhz: 108.0
+    freq_end_mhz: 118.0
+    service_name: 航空导航（VOR/ILS/NDB）
+    service_type: aviation
+    channel_bw_khz: 50
+    authority: national
+    description: 甚高频全向信标（VOR）、仪表着陆系统（ILS）、无方向性信标（NDB），50kHz聚合
+    anomaly_bw_threshold_khz: 200
+    enabled: true
+
+  # ───────────────────────── 航空VHF话音 ─────────────────────────
+  - id: 4
+    freq_start_mhz: 118.0
+    freq_end_mhz: 137.0
+    service_name: 民用航空VHF话音
+    service_type: aviation
+    channel_bw_khz: 25
+    authority: national
+    description: 民用航空地空通信，国际标准信道间隔25kHz（部分区域8.33kHz），保持25kHz精度监测
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  # ───────────────────────── VHF专业对讲（V段低） ─────────────────────────
+  - id: 5
+    freq_start_mhz: 136.0
+    freq_end_mhz: 144.0
+    service_name: 气象卫星/航空移动（VHF 136-144）
+    service_type: satellite
+    channel_bw_khz: 25
+    authority: national
+    description: 含气象卫星下行（137-138 MHz）、航空数据链等，12.5/25kHz聚合
+    anomaly_bw_threshold_khz: 100
+    enabled: true
+
+  - id: 6
+    freq_start_mhz: 144.0
+    freq_end_mhz: 146.0
+    service_name: 业余无线电（2m波段）
+    service_type: amateur
+    channel_bw_khz: 25
+    authority: national
+    description: 业余无线电，145MHz为常用中继频率，25kHz聚合
+    anomaly_bw_threshold_khz: 100
+    enabled: true
+
+  - id: 7
+    freq_start_mhz: 148.0
+    freq_end_mhz: 174.0
+    service_name: 专业对讲机VHF（V段）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: provincial
+    description: 公安、应急、工商等行业专用，信道间隔12.5kHz，具体频点需向省无管局申请
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  # ───────────────────────── 海上VHF ─────────────────────────
+  - id: 8
+    freq_start_mhz: 156.0
+    freq_end_mhz: 174.0
+    service_name: 海上VHF通信（与专业对讲重叠段）
+    service_type: maritime
+    channel_bw_khz: 25
+    authority: national
+    description: 海上移动通信，CH16（156.8MHz）为国际遇险呼叫频道，25kHz聚合；与VHF对讲频段有重叠，以maritime规则优先
+    anomaly_bw_threshold_khz: 50
+    enabled: false  # 此段与id=7重叠，按实际部署地情况选择启用其中一条
+
+  # ───────────────────────── VHF TV/数字广播 ─────────────────────────
+  - id: 9
+    freq_start_mhz: 174.0
+    freq_end_mhz: 230.0
+    service_name: VHF电视广播/数字广播（三段）
+    service_type: broadcasting
+    channel_bw_khz: 8000
+    authority: national
+    description: 传统VHF TV频段（三段），中国已基本停播模拟信号，部分地区转为DAB+数字广播，以8MHz信道聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 220-280 MHz 各类业务 ─────────────────────────
+  - id: 10
+    freq_start_mhz: 223.025
+    freq_end_mhz: 235.0
+    service_name: 交通信号/防空警报器
+    service_type: government
+    channel_bw_khz: 25
+    authority: national
+    description: 交通信号监控、防空警报系统专用频段
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  - id: 11
+    freq_start_mhz: 230.0
+    freq_end_mhz: 350.0
+    service_name: UHF低频（政府/军事/特种业务）
+    service_type: government
+    channel_bw_khz: 100
+    authority: national
+    description: 政府、军事等专用，具体分配不对外公开，以100kHz步进聚合保留基本分辨率
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 公安/应急集群（350 MHz PDT） ─────────────────────────
+  - id: 12
+    freq_start_mhz: 350.0
+    freq_end_mhz: 390.0
+    service_name: 公安/武警集群通信（350MHz PDT/TETRA）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: national
+    description: PDT（警用数字集群）和TETRA系统主力频段，公安部统一管理，12.5kHz信道间隔
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  - id: 13
+    freq_start_mhz: 370.0
+    freq_end_mhz: 380.0
+    service_name: 应急管理部专网（370MHz PDT）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: national
+    description: 应急管理部专用PDT数字集群频段，用于森林防火、抗洪抢险等应急场景
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  # ───────────────────────── UHF专业对讲（U段） ─────────────────────────
+  - id: 14
+    freq_start_mhz: 390.0
+    freq_end_mhz: 406.0
+    service_name: 政府/军事专用（390-406 MHz）
+    service_type: government
+    channel_bw_khz: 25
+    authority: national
+    description: 政府、军事等专用频段，具体分配不对外公开
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 15
+    freq_start_mhz: 406.0
+    freq_end_mhz: 406.1
+    service_name: 应急示位标（EPIRB）
+    service_type: maritime
+    channel_bw_khz: 50
+    authority: national
+    description: 国际紧急示位无线电信标（EPIRB），406.028 MHz为全球通用遇险频率，受ITU严格保护
+    anomaly_bw_threshold_khz: 200
+    enabled: true
+
+  - id: 16
+    freq_start_mhz: 406.2125
+    freq_end_mhz: 407.7
+    service_name: 共用对讲机信道（400MHz段）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: national
+    description: 2025年工信部划定的120/240个共用对讲信道，12.5kHz间隔，免费使用
+    anomaly_bw_threshold_khz: 25
+    enabled: true
+
+  - id: 17
+    freq_start_mhz: 409.0
+    freq_end_mhz: 410.0
+    service_name: 公众对讲机（FRS）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: national
+    description: 民用公众频道，20个信道，12.5kHz间隔，功率≤0.5W，免许可证使用
+    anomaly_bw_threshold_khz: 25
+    enabled: true
+
+  - id: 18
+    freq_start_mhz: 450.0
+    freq_end_mhz: 470.0
+    service_name: 专业对讲机UHF（U段）
+    service_type: pmr
+    channel_bw_khz: 12.5
+    authority: provincial
+    description: 专业UHF对讲，12.5kHz信道间隔，具体频点需向省无管局申请
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  # ───────────────────────── UHF TV ─────────────────────────
+  - id: 19
+    freq_start_mhz: 470.0
+    freq_end_mhz: 694.0
+    service_name: UHF电视广播（四至八段）
+    service_type: broadcasting
+    channel_bw_khz: 8000
+    authority: national
+    description: 数字地面电视广播（DTT/DVB-T/DTMB），8MHz信道聚合；470-698MHz原规划为TV，698MHz以下部分将逐步腾退给移动通信
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 700 MHz 5G（n28） ─────────────────────────
+  - id: 20
+    freq_start_mhz: 703.0
+    freq_end_mhz: 733.0
+    service_name: 5G NR n28 上行（700MHz）
+    service_type: mobile
+    channel_bw_khz: 30000
+    authority: national
+    operator: 中国移动/中国广电（共建共享）
+    description: 5G n28频段上行，703-733MHz（30MHz），打底覆盖，穿透力强
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 21
+    freq_start_mhz: 758.0
+    freq_end_mhz: 788.0
+    service_name: 5G NR n28 下行（700MHz）
+    service_type: mobile
+    channel_bw_khz: 30000
+    authority: national
+    operator: 中国移动/中国广电（共建共享）
+    description: 5G n28频段下行，758-788MHz（30MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 800 MHz ─────────────────────────
+  - id: 22
+    freq_start_mhz: 806.0
+    freq_end_mhz: 824.0
+    service_name: 800MHz集群通信（PDT/TETRA）
+    service_type: pmr
+    channel_bw_khz: 25
+    authority: national
+    description: 800MHz公安TETRA集群频段，25kHz信道间隔
+    anomaly_bw_threshold_khz: 50
+    enabled: true
+
+  - id: 23
+    freq_start_mhz: 824.0
+    freq_end_mhz: 835.0
+    service_name: 4G/5G Band 5 上行（中国电信850MHz）
+    service_type: mobile
+    channel_bw_khz: 11000
+    authority: national
+    operator: 中国电信
+    description: Band 5上行，5G重耕用于NR，824-835MHz（11MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 24
+    freq_start_mhz: 869.0
+    freq_end_mhz: 880.0
+    service_name: 4G/5G Band 5 下行（中国电信850MHz）
+    service_type: mobile
+    channel_bw_khz: 11000
+    authority: national
+    operator: 中国电信
+    description: Band 5下行，869-880MHz（11MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 900 MHz ─────────────────────────
+  - id: 25
+    freq_start_mhz: 889.0
+    freq_end_mhz: 909.0
+    service_name: GSM/4G/5G 900MHz 上行（中国移动）
+    service_type: mobile
+    channel_bw_khz: 20000
+    authority: national
+    operator: 中国移动
+    description: GSM 900 + 4G Band 8 + 5G n8重耕，上行889-909MHz（20MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 26
+    freq_start_mhz: 909.0
+    freq_end_mhz: 915.0
+    service_name: GSM/4G/5G 900MHz 上行（中国联通）
+    service_type: mobile
+    channel_bw_khz: 6000
+    authority: national
+    operator: 中国联通
+    description: GSM 900 + Band 8 + 5G n8重耕，上行909-915MHz（6MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 27
+    freq_start_mhz: 925.0
+    freq_end_mhz: 954.0
+    service_name: GSM/4G/5G 900MHz 下行（中国移动）
+    service_type: mobile
+    channel_bw_khz: 29000
+    authority: national
+    operator: 中国移动
+    description: Band 8下行，925-954MHz
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 28
+    freq_start_mhz: 954.0
+    freq_end_mhz: 960.0
+    service_name: GSM/4G/5G 900MHz 下行（中国联通）
+    service_type: mobile
+    channel_bw_khz: 6000
+    authority: national
+    operator: 中国联通
+    description: Band 8下行，954-960MHz
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 航空导航（L频段低） ─────────────────────────
+  - id: 29
+    freq_start_mhz: 960.0
+    freq_end_mhz: 1164.0
+    service_name: 航空导航（DME/TACAN/SSR）
+    service_type: aviation
+    channel_bw_khz: 1000
+    authority: national
+    description: 测距仪（DME）962-1213MHz，二次监视雷达（SSR）1030/1090MHz（ADS-B），以1MHz聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── GNSS L5/E5 ─────────────────────────
+  - id: 30
+    freq_start_mhz: 1164.0
+    freq_end_mhz: 1215.0
+    service_name: GNSS L5/E5（GPS L5/Galileo E5a&b/北斗B2a）
+    service_type: gnss
+    channel_bw_khz: 51000
+    authority: national
+    description: GPS L5=1176.45MHz，Galileo E5a=1176.45MHz，BeiDou B2a=1176.45MHz，E5b=1207.14MHz，整段聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── GNSS L2 ─────────────────────────
+  - id: 31
+    freq_start_mhz: 1215.0
+    freq_end_mhz: 1300.0
+    service_name: GNSS L2（GPS L2/GLONASS L2/北斗B3）
+    service_type: gnss
+    channel_bw_khz: 85000
+    authority: national
+    description: GPS L2=1227.6MHz，GLONASS L2=1246-1256MHz（FDMA），BeiDou B3=1268.52MHz，整段聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── GNSS L1 ─────────────────────────
+  - id: 32
+    freq_start_mhz: 1559.0
+    freq_end_mhz: 1620.0
+    service_name: GNSS L1（GPS L1/Galileo E1/北斗B1/GLONASS L1）
+    service_type: gnss
+    channel_bw_khz: 61000
+    authority: national
+    description: GPS L1=1575.42MHz，Galileo E1=1575.42MHz，BeiDou B1C=1575.42MHz/B1I=1561.098MHz，GLONASS L1=1602-1616MHz，整段聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 1800 MHz（Band 3） ─────────────────────────
+  - id: 33
+    freq_start_mhz: 1710.0
+    freq_end_mhz: 1785.0
+    service_name: 4G/5G Band 3 上行（1800MHz，三运营商）
+    service_type: mobile
+    channel_bw_khz: 75000
+    authority: national
+    operator: 中国移动/中国联通/中国电信
+    description: Band 3上行，1710-1785MHz（75MHz），三运营商分段使用，具体切分见运营商频段规划
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 34
+    freq_start_mhz: 1805.0
+    freq_end_mhz: 1880.0
+    service_name: 4G/5G Band 3 下行（1800MHz，三运营商）
+    service_type: mobile
+    channel_bw_khz: 75000
+    authority: national
+    operator: 中国移动/中国联通/中国电信
+    description: Band 3下行，1805-1880MHz（75MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── TD-LTE F段（Band 39，中国移动） ─────────────────────────
+  - id: 35
+    freq_start_mhz: 1880.0
+    freq_end_mhz: 1920.0
+    service_name: 4G TD-LTE Band 39（中国移动F段）
+    service_type: mobile
+    channel_bw_khz: 40000
+    authority: national
+    operator: 中国移动
+    description: TD-LTE Band 39，1880-1920MHz（40MHz），中国移动4G广覆盖，也是5G NSA锚点
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 2.1 GHz（Band 1） ─────────────────────────
+  - id: 36
+    freq_start_mhz: 1920.0
+    freq_end_mhz: 1980.0
+    service_name: 3G/4G/5G Band 1 上行（2.1GHz，联通/电信）
+    service_type: mobile
+    channel_bw_khz: 60000
+    authority: national
+    operator: 中国联通/中国电信
+    description: Band 1上行，1920-1980MHz（60MHz），联通/电信共建共享，5G n1锚点
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 37
+    freq_start_mhz: 2010.0
+    freq_end_mhz: 2025.0
+    service_name: TD-SCDMA A段（中国移动）
+    service_type: mobile
+    channel_bw_khz: 15000
+    authority: national
+    operator: 中国移动
+    description: TD-SCDMA 3G频段，2010-2025MHz（15MHz），逐步退网
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 38
+    freq_start_mhz: 2110.0
+    freq_end_mhz: 2170.0
+    service_name: 3G/4G/5G Band 1 下行（2.1GHz，联通/电信）
+    service_type: mobile
+    channel_bw_khz: 60000
+    authority: national
+    operator: 中国联通/中国电信
+    description: Band 1下行，2110-2170MHz（60MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 2.3 GHz（Band 40） ─────────────────────────
+  - id: 39
+    freq_start_mhz: 2300.0
+    freq_end_mhz: 2370.0
+    service_name: 4G TD-LTE Band 40（2.3GHz室内）
+    service_type: mobile
+    channel_bw_khz: 70000
+    authority: national
+    operator: 各运营商（室内为主）
+    description: TD-LTE Band 40，2300-2370MHz（70MHz），主要用于室内覆盖
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── WiFi 2.4 GHz ─────────────────────────
+  - id: 40
+    freq_start_mhz: 2400.0
+    freq_end_mhz: 2483.5
+    service_name: WiFi/蓝牙/ISM（2.4GHz）
+    service_type: ism
+    channel_bw_khz: 20000
+    authority: national
+    description: 2.4GHz ISM频段，WiFi 802.11b/g/n（20/40MHz信道）、蓝牙（1MHz跳频）、ZigBee等共用，以20MHz聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 2.6 GHz（Band 41/n41，中国移动） ─────────────────────────
+  - id: 41
+    freq_start_mhz: 2515.0
+    freq_end_mhz: 2675.0
+    service_name: 4G/5G Band 41/n41（2.6GHz，中国移动）
+    service_type: mobile
+    channel_bw_khz: 160000
+    authority: national
+    operator: 中国移动
+    description: 中国移动5G主力频段，n41=2515-2675MHz（160MHz），含原TD-LTE D段60MHz
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 3.5 GHz（5G NR n78） ─────────────────────────
+  - id: 42
+    freq_start_mhz: 3300.0
+    freq_end_mhz: 3400.0
+    service_name: 5G NR n78 室内（3.3GHz，联通/电信/广电）
+    service_type: mobile
+    channel_bw_khz: 100000
+    authority: national
+    operator: 中国联通/中国电信/中国广电
+    description: 5G n78室内专用，3300-3400MHz（100MHz），仅限室内覆盖场景
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 43
+    freq_start_mhz: 3400.0
+    freq_end_mhz: 3500.0
+    service_name: 5G NR n78（3.4GHz，中国电信）
+    service_type: mobile
+    channel_bw_khz: 100000
+    authority: national
+    operator: 中国电信
+    description: 5G n78，3400-3500MHz（100MHz），与联通共建共享合计3400-3600MHz共200MHz
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 44
+    freq_start_mhz: 3500.0
+    freq_end_mhz: 3600.0
+    service_name: 5G NR n78（3.5GHz，中国联通）
+    service_type: mobile
+    channel_bw_khz: 100000
+    authority: national
+    operator: 中国联通
+    description: 5G n78，3500-3600MHz（100MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── WiFi 5 GHz ─────────────────────────
+  - id: 45
+    freq_start_mhz: 5150.0
+    freq_end_mhz: 5350.0
+    service_name: WiFi 5GHz 低频（5.2GHz，室内）
+    service_type: ism
+    channel_bw_khz: 80000
+    authority: national
+    description: WiFi 802.11a/n/ac/ax，5150-5350MHz（200MHz），国内仅限室内使用，80MHz信道聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 46
+    freq_start_mhz: 5725.0
+    freq_end_mhz: 5850.0
+    service_name: WiFi/ISM 5.8GHz
+    service_type: ism
+    channel_bw_khz: 80000
+    authority: national
+    description: 5.8GHz ISM频段，WiFi 802.11a/n/ac/ax，工业、科学和医疗设备共用，室内外均可
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 4.9 GHz（5G NR n79） ─────────────────────────
+  - id: 47
+    freq_start_mhz: 4800.0
+    freq_end_mhz: 4900.0
+    service_name: 5G NR n79（4.9GHz，中国移动）
+    service_type: mobile
+    channel_bw_khz: 100000
+    authority: national
+    operator: 中国移动
+    description: 5G n79，4800-4900MHz（100MHz），行业专网和热点补充
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 48
+    freq_start_mhz: 4900.0
+    freq_end_mhz: 4960.0
+    service_name: 5G NR n79（4.9GHz，中国广电）
+    service_type: mobile
+    channel_bw_khz: 60000
+    authority: national
+    operator: 中国广电
+    description: 5G n79，4900-4960MHz（60MHz）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  # ───────────────────────── 6 GHz以上（超出EM550覆盖范围，仅RSA306B） ─────────────────────────
+  - id: 49
+    freq_start_mhz: 5850.0
+    freq_end_mhz: 6000.0
+    service_name: C波段低端（V2X/卫星等）
+    service_type: other
+    channel_bw_khz: 10000
+    authority: national
+    description: 包含V2X（车联网DSRC 5850-5925MHz）等，10MHz聚合
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+  - id: 50
+    freq_start_mhz: 6000.0
+    freq_end_mhz: 8000.0
+    service_name: C波段（卫星/雷达/微波传输）
+    service_type: satellite
+    channel_bw_khz: 36000
+    authority: national
+    description: 卫星通信下行（3.7-4.2GHz已超EM550覆盖，此段6-8GHz含固定微波、卫星上行等），36MHz聚合（卫星转发器带宽）
+    anomaly_bw_threshold_khz: null
+    enabled: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 版本记录
+# v0.1 (2026-03-13) 初始版本，基于《中华人民共和国无线电频率划分规定》（工信部令第62号）
+#                   及公开运营商频段资料整理，部分字段（authority、anomaly_bw_threshold_khz）
+#                   需结合实际部署情况在后台管理页面进一步完善
