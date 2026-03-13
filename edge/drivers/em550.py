@@ -15,8 +15,8 @@ Hardware limits (verified from manual):
 
 Connection:
   SCPI over raw TCP socket (no VISA installation required).
-  Default port 5025.  Adjust if the device uses a different port
-  (see Annex C: LAN Configuration in the manual).
+  Default port: 5555  (confirmed from manual section 5.1.1: default "89.10.11.23, port 5555").
+  The IP address and port can be changed via Annex C: LAN Configuration.
 
 Usage example:
     from edge.drivers.em550 import EM550Driver
@@ -105,7 +105,8 @@ class EM550Driver(BaseSpectrumDriver):
     host : str
         IP address or hostname of the EM550.
     port : int
-        TCP port for SCPI socket (default 5025; verify in Annex C of manual).
+        TCP port for SCPI socket.  Default 5555 (confirmed, manual §5.1.1).
+        Can be changed via Annex C: LAN Configuration.
     timeout_ms : int
         Socket / query timeout in milliseconds.
     default_step_hz : float
@@ -129,7 +130,7 @@ class EM550Driver(BaseSpectrumDriver):
     def __init__(
         self,
         host: str,
-        port: int = 5025,
+        port: int = 5555,  # default confirmed: manual §5.1.1 "port: 5555"
         timeout_ms: int = 60_000,
         default_step_hz: float = 25_000,
         detector: str = "PAVerage",
