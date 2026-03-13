@@ -1,0 +1,14 @@
+# Edge node Python dependencies
+# Install with: pip install -r requirements.txt
+
+# R&S SCPI communication (no VISA required, pure socket mode)
+RsInstrument>=1.55.0
+
+# Numeric array processing
+numpy>=1.24.0
+
+# YAML config loading (band_rules.yaml, device config)
+PyYAML>=6.0
+
+# Tektronix RSA306B (uncomment when implementing RSA306B driver)
+# tekrsa-api-wrap>=2.0.0
