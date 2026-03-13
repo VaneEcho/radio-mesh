@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
-from .routers import band_rules, ingest, query
+from .routers import band_rules, ingest, query, stations
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ async def shutdown() -> None:
 app.include_router(ingest.router)
 app.include_router(query.router)
 app.include_router(band_rules.router)
+app.include_router(stations.router)
 
 
 # ── Health / root ─────────────────────────────────────────────────────────────

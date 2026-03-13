@@ -102,6 +102,16 @@ CREATE TABLE IF NOT EXISTS band_rules (
     authority     TEXT,
     notes         TEXT
 );
+
+-- Station registry: one row per edge node.
+-- online / last_seen_ms are updated by the WebSocket heartbeat handler.
+CREATE TABLE IF NOT EXISTS stations (
+    station_id      TEXT PRIMARY KEY,
+    name            TEXT        NOT NULL,
+    registered_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_ms    BIGINT,
+    online          BOOLEAN     NOT NULL DEFAULT FALSE
+);
 """
 
 def init_schema() -> None:
@@ -275,3 +285,52 @@ def delete_band_rule(rule_id: int) -> bool:
         with conn.cursor() as cur:
             cur.execute(sql, (rule_id,))
             return cur.rowcount > 0
+
+
+# ── stations ──────────────────────────────────────────────────────────────────
+
+def upsert_station(station_id: str, name: str) -> None:
+    """
+    Insert a new station or update its name if it already exists.
+    Called when an edge node registers (or re-registers after restart).
+
+    Uses INSERT … ON CONFLICT so it's safe to call repeatedly.
+    """
+    sql = """
+        INSERT INTO stations (station_id, name, registered_at)
+        VALUES (%s, %s, now())
+        ON CONFLICT (station_id) DO UPDATE
+            SET name = EXCLUDED.name
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (station_id, name))
+    log.info("Station registered: %s (%s)", station_id, name)
+
+
+def set_station_online(station_id: str, online: bool, last_seen_ms: int) -> None:
+    """
+    Update the online flag and last-seen timestamp.
+    Called by the WebSocket heartbeat handler on each ping / disconnect.
+    """
+    sql = """
+        UPDATE stations
+        SET online = %s, last_seen_ms = %s
+        WHERE station_id = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (online, last_seen_ms, station_id))
+
+
+def list_stations() -> list[dict]:
+    """Return all registered stations ordered by station_id."""
+    sql = """
+        SELECT station_id, name, registered_at, last_seen_ms, online
+        FROM stations
+        ORDER BY station_id
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql)
+            return [dict(r) for r in cur.fetchall()]

@@ -10,5 +10,11 @@ numpy>=1.24.0
 # YAML config loading (band_rules.yaml, device config)
 PyYAML>=6.0
 
+# HTTP requests (cloud registration, bundle upload)
+requests>=2.31.0
+
+# WebSocket client (heartbeat channel to cloud)
+websocket-client>=1.7.0
+
 # Tektronix RSA306B (uncomment when implementing RSA306B driver)
 # tekrsa-api-wrap>=2.0.0
