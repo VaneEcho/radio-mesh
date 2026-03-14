@@ -32,6 +32,23 @@
           </svg>
           <span>频点查询</span>
         </router-link>
+        <router-link to="/freq-assign" class="nav-item" :class="{ active: activeMenu === '/freq-assign' }">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+            <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/>
+            <circle cx="9"  cy="18" r="2" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>频率指配</span>
+        </router-link>
+        <router-link to="/tasks" class="nav-item" :class="{ active: activeMenu === '/tasks' }">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <path d="M9 12h6M9 16h4"/>
+          </svg>
+          <span>任务下发</span>
+        </router-link>
         <router-link to="/band-rules" class="nav-item" :class="{ active: activeMenu === '/band-rules' }">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>
@@ -41,7 +58,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="version-badge">v0.3</div>
+        <div class="version-badge">v0.4</div>
       </div>
     </aside>
 

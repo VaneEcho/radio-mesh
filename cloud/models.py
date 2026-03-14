@@ -176,3 +176,36 @@ class FreqTimeseriesResponse(BaseModel):
     start_ms: int
     end_ms: int
     stations: list[FreqStationSeries]
+
+
+# ── Freq-assign ───────────────────────────────────────────────────────────────
+
+class FreqAssignRequest(BaseModel):
+    station_id: str
+    start_hz: float
+    stop_hz: float
+    channel_bw_hz: float
+    threshold_dbm: float = Field(default=-90.0, description="Channels below this are considered free")
+    lookback_s: int = Field(default=3600, ge=60, le=604800,
+                            description="Observation window in seconds (default 1 h)")
+
+
+class ChannelEntry(BaseModel):
+    channel_idx: int
+    center_hz: float
+    start_hz: float
+    stop_hz: float
+    max_dbm: Optional[float] = None    # None = no data for this channel
+    free: bool                          # True if max_dbm < threshold or no data
+
+
+class FreqAssignResponse(BaseModel):
+    station_id: str
+    start_hz: float
+    stop_hz: float
+    channel_bw_hz: float
+    threshold_dbm: float
+    lookback_s: int
+    total_channels: int
+    free_channels: int
+    channels: list[ChannelEntry]

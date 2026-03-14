@@ -572,3 +572,89 @@ def query_freq_timeseries(
         {"station_id": sid, "series": points}
         for sid, points in per_station.items()
     ]
+
+
+# ── freq-assign ───────────────────────────────────────────────────────────────
+
+def query_channel_max_levels(
+    station_id: str,
+    start_hz: float,
+    stop_hz: float,
+    channel_bw_hz: float,
+    lookback_ms: int,
+) -> list[dict]:
+    """
+    Compute the maximum measured dBm within each channel of a given band,
+    using all stored frames in the most recent `lookback_ms` window.
+
+    Algorithm:
+      1. Fetch all relevant frames from the DB.
+      2. For each frame, decompress and extract the slice covering
+         [start_hz, stop_hz].
+      3. Aggregate per-channel max across all frames (channel width = channel_bw_hz).
+      4. Return list of { channel_idx, center_hz, start_hz, stop_hz, max_dbm }.
+
+    This runs in the DB thread pool (not async).
+    """
+    import struct as _struct
+    import time as _time
+
+    now_ms = int(_time.time() * 1000)
+    from_ms = now_ms - lookback_ms
+
+    # Only fetch frames whose freq range overlaps the requested band
+    sql = """
+        SELECT freq_start_hz, freq_step_hz, num_points, levels_gz
+        FROM spectrum_frames
+        WHERE station_id = %s
+          AND period_start_ms >= %s
+          AND freq_start_hz <= %s
+          AND (freq_start_hz + freq_step_hz * (num_points - 1)) >= %s
+        ORDER BY period_start_ms
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (station_id, from_ms, stop_hz, start_hz))
+            rows = cur.fetchall()
+
+    if not rows:
+        return []
+
+    # Number of channels
+    n_channels = max(1, int((stop_hz - start_hz) / channel_bw_hz))
+    channel_max = [-999.0] * n_channels
+
+    for row in rows:
+        f0   = row["freq_start_hz"]
+        fstep= row["freq_step_hz"]
+        npts = row["num_points"]
+        raw  = gzip.decompress(bytes(row["levels_gz"]))
+
+        for ch in range(n_channels):
+            ch_lo = start_hz + ch * channel_bw_hz
+            ch_hi = ch_lo + channel_bw_hz
+
+            # Bin range within this frame
+            bin_lo = max(0, round((ch_lo - f0) / fstep))
+            bin_hi = min(npts - 1, round((ch_hi - f0) / fstep))
+            if bin_lo > bin_hi:
+                continue
+
+            for b in range(bin_lo, bin_hi + 1):
+                v = _struct.unpack_from("<f", raw, b * 4)[0]
+                if v > channel_max[ch]:
+                    channel_max[ch] = v
+
+    result = []
+    for ch, mx in enumerate(channel_max):
+        ch_lo = start_hz + ch * channel_bw_hz
+        ch_hi = ch_lo + channel_bw_hz
+        center = (ch_lo + ch_hi) / 2
+        result.append({
+            "channel_idx": ch,
+            "center_hz": center,
+            "start_hz":  ch_lo,
+            "stop_hz":   ch_hi,
+            "max_dbm": round(float(mx), 1) if mx > -999.0 else None,
+        })
+    return result

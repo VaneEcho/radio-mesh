@@ -98,3 +98,14 @@ export function createTask(task) {
 export function getTask(taskId) {
   return http.get(`/tasks/${taskId}`).then(r => r.data)
 }
+
+// ── Freq assign ────────────────────────────────────────────────────────────
+
+/**
+ * Compute free channel list from stored spectrum data.
+ * @param {object} req  { station_id, start_hz, stop_hz, channel_bw_hz, threshold_dbm, lookback_s }
+ * @returns {Promise<{total_channels, free_channels, channels: Array}>}
+ */
+export function computeFreqAssign(req) {
+  return http.post('/freq-assign', req, { timeout: 60_000 }).then(r => r.data)
+}
