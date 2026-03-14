@@ -33,6 +33,7 @@ import time
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from .. import db
+from ..connection_manager import manager
 from ..models import StationOut, StationRegisterAck, StationRegisterIn
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,9 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
     loop = asyncio.get_running_loop()
     now_ms = lambda: int(time.time() * 1000)
 
+    # Register in connection manager (for task dispatch)
+    await manager.connect(station_id, websocket)
+
     # Mark online on connect
     await loop.run_in_executor(
         None, db.set_station_online, station_id, True, now_ms()
@@ -95,9 +99,6 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
 
     try:
         while True:
-            # Wait for a message from the edge (ping or future message types).
-            # If the edge goes silent, WebSocket.receive_text() will eventually
-            # raise WebSocketDisconnect when the TCP connection closes.
             raw = await websocket.receive_text()
 
             try:
@@ -106,9 +107,10 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
                 log.warning("WS bad JSON from %s: %r", station_id, raw[:120])
                 continue
 
-            if msg.get("type") == "ping":
+            mtype = msg.get("type")
+
+            if mtype == "ping":
                 ts = now_ms()
-                # Update last_seen in DB (fire-and-forget via executor)
                 asyncio.ensure_future(
                     loop.run_in_executor(
                         None, db.set_station_online, station_id, True, ts
@@ -117,15 +119,28 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
                 await websocket.send_text(json.dumps({"type": "pong", "ts": ts}))
                 log.debug("WS ping/pong: station=%s", station_id)
 
+            elif mtype == "task_ack":
+                # Edge acknowledged receipt of a task and is starting execution
+                task_id = msg.get("task_id")
+                if task_id:
+                    log.info("WS task_ack: station=%s task=%s", station_id, task_id)
+
+            elif mtype == "task_progress":
+                # Edge reporting incremental progress (optional)
+                log.debug(
+                    "WS task_progress: station=%s task=%s progress=%s%%",
+                    station_id, msg.get("task_id"), msg.get("progress", "?"),
+                )
+
             else:
-                log.debug("WS unknown message type from %s: %s", station_id, msg.get("type"))
+                log.debug("WS unknown msg from %s: type=%s", station_id, mtype)
 
     except WebSocketDisconnect:
         log.info("WS disconnect: station=%s", station_id)
     except Exception as exc:
         log.error("WS error: station=%s  %s", station_id, exc)
     finally:
-        # Always mark offline on any kind of disconnect
+        await manager.disconnect(station_id)
         await loop.run_in_executor(
             None, db.set_station_online, station_id, False, now_ms()
         )

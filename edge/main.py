@@ -67,10 +67,14 @@ def main() -> None:
     station_name = cfg["station"].get("name", station_id)
     log.info("Station: %s (%s)", station_name, station_id)
 
+    # ── Task queue (shared between Heartbeat and Scanner) ─────────────────
+    import queue as _queue
+    task_queue: _queue.Queue = _queue.Queue()
+
     # ── Heartbeat ─────────────────────────────────────────────────────────
     from .heartbeat import Heartbeat
 
-    heartbeat = Heartbeat(cfg=cfg)
+    heartbeat = Heartbeat(cfg=cfg, task_queue=task_queue)
     heartbeat.start()   # no-op if cloud.enabled=false
 
     # ── Uploader ──────────────────────────────────────────────────────────
@@ -91,7 +95,7 @@ def main() -> None:
     # ── Scanner ───────────────────────────────────────────────────────────
     from .scanner import Scanner
 
-    scanner = Scanner(cfg=cfg, uploader=uploader)
+    scanner = Scanner(cfg=cfg, uploader=uploader, task_queue=task_queue)
 
     log.info("Starting scan loop …  (Ctrl-C to stop)")
     try:
