@@ -1,70 +1,80 @@
 <template>
-  <div>
+  <div class="spectrum-page">
     <!-- ── Breadcrumb ── -->
-    <el-breadcrumb separator="/" class="mb16">
-      <el-breadcrumb-item :to="{ path: '/' }">站点总览</el-breadcrumb-item>
-      <el-breadcrumb-item>{{ stationId }}</el-breadcrumb-item>
-    </el-breadcrumb>
+    <div class="breadcrumb mb20">
+      <router-link to="/" class="bc-link">站点总览</router-link>
+      <span class="bc-sep">/</span>
+      <span class="bc-cur">{{ stationId }}</span>
+    </div>
 
     <!-- ── Page header ── -->
     <div class="page-header mb24">
       <div>
-        <h2 class="page-title">频谱查看 — {{ stationId }}</h2>
-        <p class="page-sub">{{ frames.length }} 帧数据 · 点击频谱上的帧时间线可切换</p>
+        <h2 class="page-title">频谱分析</h2>
+        <p class="page-sub">{{ stationId }} · {{ frames.length > 0 ? frames.length + ' 帧' : '暂无数据' }}</p>
+      </div>
+      <div class="header-badges" v-if="currentFrame">
+        <span class="badge badge-freq">
+          {{ (currentFrame.freq_start_hz / 1e6).toFixed(1) }} – {{ endFreqMHz(currentFrame).toFixed(1) }} MHz
+        </span>
+        <span class="badge badge-pts">{{ currentFrame.num_points.toLocaleString() }} 点</span>
+        <span class="badge badge-sweep">合并 {{ currentFrame.sweep_count }} 次扫描</span>
       </div>
     </div>
 
     <!-- ── Query bar ── -->
-    <el-card class="query-bar mb24" shadow="never">
-      <el-form inline>
-        <el-form-item label="时间范围">
-          <el-select v-model="preset" style="width:130px" @change="applyPreset">
-            <el-option label="最近 1 小时" value="1h" />
-            <el-option label="最近 6 小时" value="6h" />
-            <el-option label="最近 24 小时" value="24h" />
-            <el-option label="自定义" value="custom" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="preset === 'custom'" label="开始">
-          <el-date-picker v-model="customStart" type="datetime" style="width:180px"
-            value-format="x" placeholder="开始时间" />
-        </el-form-item>
-        <el-form-item v-if="preset === 'custom'" label="结束">
-          <el-date-picker v-model="customEnd" type="datetime" style="width:180px"
-            value-format="x" placeholder="结束时间" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="loading" @click="query">查询</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="query-bar mb20">
+      <div class="query-presets">
+        <button
+          v-for="p in PRESETS"
+          :key="p.value"
+          class="preset-btn"
+          :class="{ active: preset === p.value }"
+          @click="preset = p.value; applyPreset()"
+        >{{ p.label }}</button>
+      </div>
+      <div v-if="preset === 'custom'" class="custom-range">
+        <el-date-picker v-model="customStart" type="datetime" style="width:180px"
+          value-format="x" placeholder="开始时间" size="small" />
+        <span class="range-to">→</span>
+        <el-date-picker v-model="customEnd" type="datetime" style="width:180px"
+          value-format="x" placeholder="结束时间" size="small" />
+        <el-button type="primary" size="small" :loading="loading" @click="query">查询</el-button>
+      </div>
+      <div class="query-status" v-if="loading">
+        <span class="spinner" />加载中…
+      </div>
+    </div>
 
     <!-- ── Error ── -->
-    <el-alert v-if="error" :title="error" type="error" show-icon closable class="mb24" />
+    <div v-if="error" class="error-bar mb20">
+      <span>⚠ {{ error }}</span>
+      <button @click="error = ''" class="error-close">×</button>
+    </div>
 
     <!-- ── No data ── -->
-    <el-empty v-if="!loading && frames.length === 0 && queried && !error"
-      description="该时间段内暂无频谱数据" />
+    <div v-if="!loading && frames.length === 0 && queried && !error" class="empty-state">
+      <div class="empty-icon">📡</div>
+      <div class="empty-text">该时间段内暂无频谱数据</div>
+    </div>
 
     <!-- ── Main chart ── -->
-    <el-card v-if="currentFrame" shadow="never" class="mb16">
-      <template #header>
-        <div class="chart-header">
-          <span>频谱 — {{ fmtTime(currentFrame.period_start_ms) }}</span>
-          <span class="chart-meta">
-            {{ (currentFrame.freq_start_hz / 1e6).toFixed(1) }} –
-            {{ endFreqMHz(currentFrame).toFixed(1) }} MHz ·
-            {{ currentFrame.num_points.toLocaleString() }} 点 ·
-            {{ currentFrame.sweep_count }} 次扫描合并
-          </span>
+    <div v-if="currentFrame" class="chart-card mb16">
+      <div class="chart-topbar">
+        <div class="chart-title">
+          <span class="chart-time">{{ fmtTime(currentFrame.period_start_ms) }}</span>
+          <span v-if="isShowingRaw" class="zoom-badge">🔍 原始分辨率</span>
         </div>
-      </template>
+        <div class="chart-actions">
+          <button v-if="isZoomed" class="action-btn" @click="resetZoom">重置缩放</button>
+        </div>
+      </div>
       <div ref="chartEl" class="chart-area" />
-    </el-card>
+    </div>
 
     <!-- ── Frame timeline ── -->
-    <el-card v-if="frames.length > 1" shadow="never">
-      <template #header><span>帧时间线（共 {{ frames.length }} 帧，点击切换）</span></template>
+    <div v-if="frames.length > 1" class="tl-card">
+      <div class="tl-header">帧时间线 <span class="tl-count">共 {{ frames.length }} 帧</span></div>
       <div class="timeline">
         <div
           v-for="(f, i) in frames"
@@ -73,10 +83,11 @@
           :class="{ active: i === frameIdx }"
           @click="selectFrame(i)"
         >
-          {{ fmtTimeShort(f.period_start_ms) }}
+          <div class="tl-time">{{ fmtTimeShort(f.period_start_ms) }}</div>
+          <div class="tl-sweeps">{{ f.sweep_count }}次</div>
         </div>
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -90,6 +101,13 @@ import { querySpectrum } from '../api/index.js'
 const route = useRoute()
 const stationId = route.params.stationId
 
+const PRESETS = [
+  { label: '1 小时', value: '1h' },
+  { label: '6 小时', value: '6h' },
+  { label: '24 小时', value: '24h' },
+  { label: '自定义', value: 'custom' },
+]
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 const preset      = ref('1h')
@@ -101,9 +119,10 @@ const frames      = ref([])
 const frameIdx    = ref(0)
 const queried     = ref(false)
 const chartEl     = ref(null)
+const isShowingRaw = ref(false)
+const isZoomed     = ref(false)
 
 let chart = null
-
 const currentFrame = ref(null)
 
 // ── Time helpers ─────────────────────────────────────────────────────────────
@@ -138,13 +157,9 @@ async function query() {
     const [start, end] = timeRange()
     const res = await querySpectrum(stationId, start, end)
     frames.value = res.rows
-    frameIdx.value = frames.value.length - 1   // start at the most recent
+    frameIdx.value = frames.value.length - 1
     queried.value = true
-    if (frames.value.length) {
-      currentFrame.value = frames.value[frameIdx.value]
-    } else {
-      currentFrame.value = null
-    }
+    currentFrame.value = frames.value.length ? frames.value[frameIdx.value] : null
   } catch (e) {
     error.value = '查询失败：' + (e.response?.data?.detail || e.message)
   } finally {
@@ -157,30 +172,70 @@ function selectFrame(i) {
   currentFrame.value = frames.value[i]
 }
 
+// ── Max-pool downsampling ─────────────────────────────────────────────────────
+// For spectrograms, max-pooling is critical: merging N points into 1 takes the
+// maximum so narrow signal peaks are never lost in the overview.
+
+const TARGET_POINTS = 2000
+
+function maxPool(freqs, levels, target) {
+  const n = freqs.length
+  if (n <= target) return { freqs, levels }
+  const out = new Array(target)
+  const binSize = n / target
+  for (let i = 0; i < target; i++) {
+    const lo = Math.floor(i * binSize)
+    const hi = Math.min(Math.floor((i + 1) * binSize), n)
+    let maxVal = -Infinity
+    for (let j = lo; j < hi; j++) {
+      if (levels[j] > maxVal) maxVal = levels[j]
+    }
+    // Use center frequency of the bin
+    const centerIdx = Math.floor((lo + hi) / 2)
+    out[i] = [freqs[centerIdx], maxVal]
+  }
+  return out
+}
+
+/** Build [freq, level] pairs for ECharts from a slice of the full arrays */
+function buildData(freqs, levels, startIdx, endIdx, target) {
+  const len = endIdx - startIdx
+  if (len <= target) {
+    const out = new Array(len)
+    for (let i = 0; i < len; i++) out[i] = [freqs[startIdx + i], levels[startIdx + i]]
+    return { data: out, raw: true }
+  }
+  const slice = { freqs: { length: len, at: (i) => freqs[startIdx + i] }, levels: { length: len, at: (i) => levels[startIdx + i] } }
+  // use maxPool on slice
+  const target2 = target
+  const binSize = len / target2
+  const out = new Array(target2)
+  for (let i = 0; i < target2; i++) {
+    const lo = Math.floor(i * binSize)
+    const hi = Math.min(Math.floor((i + 1) * binSize), len)
+    let maxVal = -Infinity
+    for (let j = lo; j < hi; j++) {
+      const v = levels[startIdx + j]
+      if (v > maxVal) maxVal = v
+    }
+    const centerIdx = startIdx + Math.floor((lo + hi) / 2)
+    out[i] = [freqs[centerIdx], maxVal]
+  }
+  return { data: out, raw: false }
+}
+
 // ── Spectrum decoding ─────────────────────────────────────────────────────────
 
-/**
- * Decode base64(gzip(float32[])) → { freqs: Float32Array, levels: Float32Array }
- *
- * Why pako?  The browser's native CompressionStream only supports streaming
- * decompression and can't handle raw gzip in a synchronous call.  pako is a
- * pure-JS zlib/gzip implementation that works synchronously.
- */
 function decodeFrame(frame) {
-  const b64    = frame.levels_dbm_b64
-  const binary = atob(b64)
+  const binary = atob(frame.levels_dbm_b64)
   const bytes  = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-
-  const raw    = pako.inflate(bytes)                      // Uint8Array
+  const raw    = pako.inflate(bytes)
   const levels = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4)
-
-  // Build parallel frequency array (MHz)
-  const freqs = new Float32Array(levels.length)
-  const start = frame.freq_start_hz / 1e6
-  const step  = frame.freq_step_hz  / 1e6
+  const freqs  = new Float32Array(levels.length)
+  const start  = frame.freq_start_hz / 1e6
+  const step   = frame.freq_step_hz  / 1e6
   for (let i = 0; i < levels.length; i++) freqs[i] = start + i * step
-
   return { freqs, levels }
 }
 
@@ -190,79 +245,126 @@ function buildChart() {
   if (!chartEl.value) return
   if (chart) chart.dispose()
   chart = echarts.init(chartEl.value, 'dark')
-  window.__rfmeshChart = chart   // handy for debug in browser console
+  window.__rfmeshChart = chart
+}
+
+let _fullFreqs  = null
+let _fullLevels = null
+
+function resetZoom() {
+  if (!chart) return
+  chart.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
 }
 
 function renderFrame(frame) {
   if (!chart) return
   const { freqs, levels } = decodeFrame(frame)
+  _fullFreqs  = freqs
+  _fullLevels = levels
 
-  // Build [x, y] pairs for ECharts scatter/line dataset
-  // We pass raw arrays and let ECharts do LTTB downsampling
-  const data = []
-  for (let i = 0; i < freqs.length; i++) {
-    data.push([freqs[i], levels[i]])
-  }
-
+  const overviewData = maxPool(freqs, levels, TARGET_POINTS)
   const minFreq = freqs[0]
   const maxFreq = freqs[freqs.length - 1]
+
+  isShowingRaw.value = false
+  isZoomed.value = false
 
   chart.setOption({
     backgroundColor: 'transparent',
     animation: false,
-    grid: { left: 60, right: 20, top: 20, bottom: 50 },
+    grid: { left: 64, right: 24, top: 16, bottom: 54 },
     tooltip: {
       trigger: 'axis',
-      formatter: ([p]) => `${p.data[0].toFixed(3)} MHz<br/>${p.data[1].toFixed(1)} dBm`,
-      backgroundColor: '#1a1f2e',
-      borderColor: '#4a5568',
+      formatter: ([p]) => `<span style="color:#94a3b8;font-size:11px">${p.data[0].toFixed(4)} MHz</span><br/><b style="color:#e2e8f0;font-size:13px">${p.data[1].toFixed(1)} dBm</b>`,
+      backgroundColor: '#0f172a',
+      borderColor: '#334155',
+      borderWidth: 1,
+      padding: [8, 12],
       textStyle: { color: '#e2e8f0', fontSize: 12 },
     },
     xAxis: {
       type: 'value',
-      name: '频率 (MHz)',
-      nameLocation: 'middle',
-      nameGap: 30,
+      name: 'MHz',
+      nameLocation: 'end',
+      nameTextStyle: { color: '#64748b', fontSize: 11 },
       min: minFreq,
       max: maxFreq,
-      axisLabel: { color: '#a0aec0', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#2d3748' } },
+      axisLabel: { color: '#64748b', fontSize: 11, formatter: v => v.toFixed(0) },
+      axisLine: { lineStyle: { color: '#1e293b' } },
+      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
     },
     yAxis: {
       type: 'value',
       name: 'dBm',
-      nameLocation: 'middle',
-      nameGap: 40,
-      axisLabel: { color: '#a0aec0', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#2d3748' } },
+      nameLocation: 'end',
+      nameTextStyle: { color: '#64748b', fontSize: 11 },
+      axisLabel: { color: '#64748b', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#1e293b' } },
+      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
     },
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-      { type: 'slider',  xAxisIndex: 0, bottom: 4,
-        fillerColor: 'rgba(99,179,237,0.1)',
-        borderColor: '#4a5568',
-        textStyle: { color: '#a0aec0' },
+      {
+        type: 'slider', xAxisIndex: 0, bottom: 6, height: 28,
+        fillerColor: 'rgba(56,189,248,0.08)',
+        borderColor: '#1e293b',
+        handleStyle: { color: '#38bdf8', borderColor: '#38bdf8' },
+        moveHandleStyle: { color: '#38bdf8' },
+        textStyle: { color: '#64748b', fontSize: 10 },
+        selectedDataBackground: {
+          lineStyle: { color: '#38bdf8', width: 1 },
+          areaStyle: { color: 'rgba(56,189,248,0.06)' },
+        },
+        dataBackground: {
+          lineStyle: { color: '#334155', width: 1 },
+          areaStyle: { color: 'rgba(51,65,85,0.3)' },
+        },
       },
     ],
     series: [{
       type: 'line',
-      data,
-      // LTTB downsampling: ECharts picks ~2000 representative points
-      // automatically when rendering.  No quality loss on important peaks.
-      sampling: 'lttb',
+      data: overviewData,
+      sampling: null,     // we do our own max-pool, don't let ECharts subsample further
       symbol: 'none',
-      lineStyle: { color: '#63b3ed', width: 1.2 },
+      lineStyle: { color: '#38bdf8', width: 1.5 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(99,179,237,0.3)' },
-          { offset: 1, color: 'rgba(99,179,237,0)' },
+          { offset: 0, color: 'rgba(56,189,248,0.25)' },
+          { offset: 0.7, color: 'rgba(56,189,248,0.04)' },
+          { offset: 1, color: 'rgba(56,189,248,0)' },
         ]),
       },
     }],
   }, true)
+
+  // On zoom: slice full data and apply max-pool → gives "original resolution" in view
+  chart.off('datazoom')
+  chart.on('datazoom', () => {
+    const opt = chart.getOption()
+    const dz  = opt.dataZoom[0]
+    const startPct = dz.start ?? 0
+    const endPct   = dz.end   ?? 100
+
+    isZoomed.value = startPct > 0.5 || endPct < 99.5
+
+    if (!isZoomed.value) {
+      // Zoomed back out → restore overview max-pool
+      isShowingRaw.value = false
+      chart.setOption({ series: [{ data: overviewData }] })
+      return
+    }
+
+    // Find index range in full arrays
+    const totalLen = _fullFreqs.length
+    const lo = Math.max(0,         Math.floor(startPct / 100 * totalLen))
+    const hi = Math.min(totalLen,  Math.ceil(endPct   / 100 * totalLen))
+
+    const { data, raw } = buildData(_fullFreqs, _fullLevels, lo, hi, TARGET_POINTS)
+    isShowingRaw.value = raw
+    chart.setOption({ series: [{ data }] })
+  })
 }
 
-// Re-render whenever currentFrame changes
 watch(currentFrame, async (frame) => {
   if (!frame) return
   await nextTick()
@@ -270,12 +372,11 @@ watch(currentFrame, async (frame) => {
   renderFrame(frame)
 })
 
-// Handle window resize
 function onResize() { chart?.resize() }
 
 onMounted(() => {
   window.addEventListener('resize', onResize)
-  query()   // auto-load last 1 hour on open
+  query()
 })
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
@@ -284,54 +385,147 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mb16  { margin-bottom: 16px; }
-.mb24  { margin-bottom: 24px; }
+.spectrum-page { padding-bottom: 32px; }
+.mb16 { margin-bottom: 16px; }
+.mb20 { margin-bottom: 20px; }
+.mb24 { margin-bottom: 24px; }
 
+/* ── Breadcrumb ── */
+.breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.bc-link { color: #38bdf8; text-decoration: none; }
+.bc-link:hover { text-decoration: underline; }
+.bc-sep { color: #334155; }
+.bc-cur { color: #64748b; }
+
+/* ── Page header ── */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.page-title  { font-size: 22px; font-weight: 600; color: #e2e8f0; }
-.page-sub    { font-size: 13px; color: #718096; margin-top: 4px; }
+.page-title  { font-size: 24px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
+.page-sub    { font-size: 13px; color: #64748b; margin-top: 3px; }
 
-:deep(.query-bar .el-card__body) { padding: 14px 20px 4px; }
-:deep(.el-card) {
-  background: #1a1f2e;
-  border-color: #2d3748;
-  --el-card-bg-color: #1a1f2e;
+.header-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.badge {
+  font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid; white-space: nowrap;
 }
-:deep(.el-card__header) {
-  border-bottom-color: #2d3748;
-  padding: 12px 20px;
-  color: #a0aec0;
+.badge-freq  { background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.3); color: #38bdf8; }
+.badge-pts   { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.3); color: #818cf8; }
+.badge-sweep { background: rgba(34,197,94,0.08);  border-color: rgba(34,197,94,0.3);  color: #4ade80; }
+
+/* ── Query bar ── */
+.query-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+.query-presets { display: flex; gap: 6px; }
+.preset-btn {
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  background: transparent;
+  color: #64748b;
   font-size: 13px;
+  cursor: pointer;
+  transition: all .15s;
 }
+.preset-btn:hover  { border-color: #334155; color: #94a3b8; }
+.preset-btn.active { background: rgba(56,189,248,0.12); border-color: #38bdf8; color: #38bdf8; }
 
-.chart-header {
+.custom-range { display: flex; align-items: center; gap: 10px; }
+.range-to { color: #334155; }
+
+.query-status { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 13px; }
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #1e293b;
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Error ── */
+.error-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 10px; padding: 10px 16px; color: #f87171; font-size: 13px;
+}
+.error-close { background: none; border: none; color: #f87171; font-size: 18px; cursor: pointer; }
+
+/* ── Empty ── */
+.empty-state { text-align: center; padding: 80px 0; }
+.empty-icon  { font-size: 48px; margin-bottom: 12px; opacity: .4; }
+.empty-text  { color: #475569; font-size: 14px; }
+
+/* ── Chart card ── */
+.chart-card {
+  background: #0a0f1e;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.chart-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #e2e8f0;
-  font-size: 14px;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid #1e293b;
 }
-.chart-meta { color: #718096; font-size: 12px; }
+.chart-title { display: flex; align-items: center; gap: 10px; }
+.chart-time  { font-size: 13px; color: #94a3b8; font-weight: 500; }
+.zoom-badge  {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px;
+  background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24;
+}
+.chart-actions { display: flex; gap: 8px; }
+.action-btn {
+  padding: 4px 12px; border-radius: 7px;
+  border: 1px solid #334155; background: transparent; color: #64748b;
+  font-size: 12px; cursor: pointer; transition: all .15s;
+}
+.action-btn:hover { border-color: #38bdf8; color: #38bdf8; }
 
-.chart-area { width: 100%; height: 420px; }
+.chart-area { width: 100%; height: 460px; }
+
+/* ── Timeline ── */
+.tl-card {
+  background: #0a0f1e;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+.tl-header {
+  font-size: 13px; color: #64748b; margin-bottom: 12px; font-weight: 500;
+}
+.tl-count { color: #334155; font-weight: 400; }
 
 .timeline {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-height: 120px;
+  max-height: 130px;
   overflow-y: auto;
 }
 .tl-item {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  background: #2d3748;
-  color: #a0aec0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background .15s;
+  transition: all .15s;
+  text-align: center;
+  min-width: 64px;
 }
-.tl-item:hover  { background: #4a5568; }
-.tl-item.active { background: #2b4c7e; color: #63b3ed; }
+.tl-item:hover { border-color: #334155; }
+.tl-item.active { background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.5); }
+
+.tl-time   { font-size: 11px; color: #64748b; }
+.tl-sweeps { font-size: 10px; color: #475569; margin-top: 1px; }
+.tl-item.active .tl-time { color: #38bdf8; }
 </style>

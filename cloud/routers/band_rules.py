@@ -18,7 +18,7 @@ from .. import db
 from ..models import BandRuleIn, BandRuleListResponse, BandRuleOut
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/band_rules", tags=["band_rules"])
+router = APIRouter(prefix="/api/v1/band-rules", tags=["band_rules"])
 
 
 @router.get("", response_model=BandRuleListResponse)
