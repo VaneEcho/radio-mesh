@@ -100,3 +100,79 @@ class StationOut(BaseModel):
     name: str
     last_seen_ms: Optional[int] = None
     online: bool
+
+
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+
+class TaskCreate(BaseModel):
+    type: str                           # band_scan / channel_scan / if_analysis
+    params: dict                        # scan parameters (see REQUIREMENTS §7.2)
+    station_ids: list[str]
+    stream_fps: int = Field(default=0, ge=0, le=30)
+
+
+class TaskStationOut(BaseModel):
+    station_id: str
+    status: str
+    dispatched_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    result_b64: Optional[str] = None
+    result_meta: Optional[str] = None
+    error: Optional[str] = None
+
+
+class TaskOut(BaseModel):
+    task_id: str
+    type: str
+    params: str
+    stream_fps: int
+    status: str
+    created_at: str
+    updated_at: str
+    stations: list[TaskStationOut] = []
+
+
+class TaskSummary(BaseModel):
+    task_id: str
+    type: str
+    status: str
+    created_at: str
+    station_count: int
+    completed_count: int
+
+
+class TaskListResponse(BaseModel):
+    tasks: list[TaskSummary]
+    total: int
+
+
+class TaskResultIn(BaseModel):
+    """Posted by edge agent to report task result."""
+    station_id: str
+    result_b64: Optional[str] = None
+    result_meta: Optional[dict] = None
+    error: Optional[str] = None
+
+
+# ── Freq-timeseries ───────────────────────────────────────────────────────────
+
+class FreqTimePoint(BaseModel):
+    t: int
+    dbm: float
+
+
+class FreqStationSeries(BaseModel):
+    station_id: str
+    name: Optional[str] = None
+    max_dbm: float
+    median_dbm: float
+    frame_count: int
+    series: list[FreqTimePoint]
+
+
+class FreqTimeseriesResponse(BaseModel):
+    freq_hz: float
+    start_ms: int
+    end_ms: int
+    stations: list[FreqStationSeries]

@@ -24,6 +24,14 @@
           </svg>
           <span>站点总览</span>
         </router-link>
+        <router-link to="/freq-query" class="nav-item" :class="{ active: activeMenu === '/freq-query' }">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+            <path d="M11 8v6M8 11h6"/>
+          </svg>
+          <span>频点查询</span>
+        </router-link>
         <router-link to="/band-rules" class="nav-item" :class="{ active: activeMenu === '/band-rules' }">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>

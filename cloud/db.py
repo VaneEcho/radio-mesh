@@ -9,6 +9,8 @@ TimescaleDB schema
 spectrum_frames   — one row per station per 1-minute aggregation window.
                     The levels array is stored compressed as BYTEA.
 band_rules        — configurable frequency band definitions (cloud-only).
+tasks             — task dispatch records (Cloud → Edge).
+task_stations     — per-station status and result for each task.
 
 Environment variables
 ---------------------
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import gzip
+import json
 import logging
 import os
 import struct
@@ -113,6 +116,34 @@ CREATE TABLE IF NOT EXISTS stations (
     last_seen_ms    BIGINT,
     online          BOOLEAN     NOT NULL DEFAULT FALSE
 );
+
+-- Task dispatch records.  Each task targets one or more stations.
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id     TEXT PRIMARY KEY,
+    type        TEXT        NOT NULL,   -- band_scan / channel_scan / if_analysis
+    params      TEXT        NOT NULL,   -- JSON string
+    stream_fps  INT         NOT NULL DEFAULT 0,
+    status      TEXT        NOT NULL DEFAULT 'pending',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Per-station status and result for each task.
+CREATE TABLE IF NOT EXISTS task_stations (
+    task_id       TEXT        NOT NULL REFERENCES tasks(task_id),
+    station_id    TEXT        NOT NULL,
+    status        TEXT        NOT NULL DEFAULT 'pending',
+    dispatched_at TIMESTAMPTZ,
+    started_at    TIMESTAMPTZ,
+    finished_at   TIMESTAMPTZ,
+    result_b64    TEXT,   -- base64(gzip(float32[])) for band/channel scan
+    result_meta   TEXT,   -- JSON metadata (freq_start_hz, freq_step_hz, …)
+    error         TEXT,
+    PRIMARY KEY (task_id, station_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_tasks_created ON tasks (created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_task_stations_station ON task_stations (station_id, task_id);
 """
 
 def init_schema() -> None:
@@ -335,3 +366,209 @@ def list_stations() -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql)
             return [dict(r) for r in cur.fetchall()]
+
+
+# ── tasks ─────────────────────────────────────────────────────────────────────
+
+def create_task(
+    task_id: str,
+    task_type: str,
+    params: dict,
+    station_ids: list[str],
+    stream_fps: int = 0,
+) -> None:
+    """Insert a new task and its per-station placeholders."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO tasks (task_id, type, params, stream_fps, status)
+                VALUES (%s, %s, %s, %s, 'pending')
+                """,
+                (task_id, task_type, json.dumps(params), stream_fps),
+            )
+            for sid in station_ids:
+                cur.execute(
+                    """
+                    INSERT INTO task_stations (task_id, station_id, status)
+                    VALUES (%s, %s, 'pending')
+                    """,
+                    (task_id, sid),
+                )
+
+
+def mark_task_dispatched(task_id: str, station_id: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE task_stations
+                SET status = 'dispatched', dispatched_at = now()
+                WHERE task_id = %s AND station_id = %s
+                """,
+                (task_id, station_id),
+            )
+            cur.execute(
+                "UPDATE tasks SET status = 'dispatched', updated_at = now() WHERE task_id = %s",
+                (task_id,),
+            )
+
+
+def save_task_result(
+    task_id: str,
+    station_id: str,
+    result_b64: str | None,
+    result_meta: dict | None,
+    error: str | None,
+) -> None:
+    """Called when an edge agent reports task completion or failure."""
+    status = "failed" if error else "completed"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE task_stations
+                SET status = %s, finished_at = now(),
+                    result_b64 = %s, result_meta = %s, error = %s
+                WHERE task_id = %s AND station_id = %s
+                """,
+                (
+                    status,
+                    result_b64,
+                    json.dumps(result_meta) if result_meta else None,
+                    error,
+                    task_id, station_id,
+                ),
+            )
+            # Update parent task status: completed if all stations done
+            cur.execute(
+                """
+                UPDATE tasks SET updated_at = now(),
+                    status = CASE
+                        WHEN NOT EXISTS (
+                            SELECT 1 FROM task_stations
+                            WHERE task_id = %s
+                              AND status NOT IN ('completed', 'failed')
+                        ) THEN 'completed'
+                        ELSE status
+                    END
+                WHERE task_id = %s
+                """,
+                (task_id, task_id),
+            )
+
+
+def get_task(task_id: str) -> dict | None:
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT t.task_id, t.type, t.params, t.stream_fps, t.status,
+                       t.created_at, t.updated_at
+                FROM tasks t
+                WHERE t.task_id = %s
+                """,
+                (task_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            task = dict(row)
+            cur.execute(
+                """
+                SELECT station_id, status, dispatched_at, started_at,
+                       finished_at, result_b64, result_meta, error
+                FROM task_stations
+                WHERE task_id = %s
+                ORDER BY station_id
+                """,
+                (task_id,),
+            )
+            task["stations"] = [dict(r) for r in cur.fetchall()]
+            return task
+
+
+def list_tasks(limit: int = 100) -> list[dict]:
+    sql = """
+        SELECT task_id, type, status, created_at, updated_at,
+               (SELECT COUNT(*) FROM task_stations ts WHERE ts.task_id = t.task_id) AS station_count,
+               (SELECT COUNT(*) FROM task_stations ts WHERE ts.task_id = t.task_id AND ts.status = 'completed') AS completed_count
+        FROM tasks t
+        ORDER BY created_at DESC
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (limit,))
+            return [dict(r) for r in cur.fetchall()]
+
+
+# ── freq-timeseries ───────────────────────────────────────────────────────────
+
+def query_freq_timeseries(
+    freq_hz: float,
+    start_ms: int,
+    end_ms: int,
+    station_ids: list[str] | None = None,
+) -> list[dict]:
+    """
+    Extract the power level of a single frequency bin across all stations
+    and all frames within the time window.
+
+    For each matching frame, we:
+      1. Decompress levels_gz → float32 array
+      2. Compute bin_idx = round((freq_hz - freq_start_hz) / freq_step_hz)
+      3. If 0 <= bin_idx < num_points, record (period_start_ms, dbm)
+
+    Returns a list of dicts grouped by station_id, sorted by time.
+    """
+    import struct as _struct
+
+    conditions = [
+        "period_start_ms >= %s",
+        "period_end_ms   <= %s",
+        # Only frames whose freq range actually covers the requested freq
+        "freq_start_hz <= %s",
+        "(freq_start_hz + freq_step_hz * (num_points - 1)) >= %s",
+    ]
+    params: list = [start_ms, end_ms, freq_hz, freq_hz]
+
+    if station_ids:
+        placeholders = ",".join(["%s"] * len(station_ids))
+        conditions.append(f"station_id IN ({placeholders})")
+        params.extend(station_ids)
+
+    sql = f"""
+        SELECT station_id, period_start_ms, period_end_ms,
+               freq_start_hz, freq_step_hz, num_points, levels_gz
+        FROM spectrum_frames
+        WHERE {' AND '.join(conditions)}
+        ORDER BY station_id, period_start_ms
+    """
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    # Group by station, extract the bin
+    per_station: dict[str, list] = {}
+    for row in rows:
+        sid = row["station_id"]
+        bin_idx = round(
+            (freq_hz - row["freq_start_hz"]) / row["freq_step_hz"]
+        )
+        if not (0 <= bin_idx < row["num_points"]):
+            continue
+        raw = gzip.decompress(bytes(row["levels_gz"]))
+        # float32 little-endian
+        dbm = _struct.unpack_from("<f", raw, bin_idx * 4)[0]
+        per_station.setdefault(sid, []).append({
+            "t": row["period_start_ms"],
+            "dbm": round(float(dbm), 2),
+        })
+
+    return [
+        {"station_id": sid, "series": points}
+        for sid, points in per_station.items()
+    ]

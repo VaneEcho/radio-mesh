@@ -56,3 +56,45 @@ export function updateBandRule(ruleId, updates) {
 export function deleteBandRule(ruleId) {
   return http.delete(`/band-rules/${ruleId}`).then(r => r.data)
 }
+
+// ── Freq timeseries ────────────────────────────────────────────────────────
+
+/**
+ * Query power levels at a single frequency across all stations.
+ * @param {number} freqHz       Frequency in Hz
+ * @param {number} startMs      Window start (Unix ms)
+ * @param {number} endMs        Window end (Unix ms)
+ * @param {string[]} [stationIds]  Filter to specific stations (optional)
+ * @returns {Promise<{freq_hz, start_ms, end_ms, stations: Array}>}
+ */
+export function queryFreqTimeseries(freqHz, startMs, endMs, stationIds = []) {
+  return http.get('/spectrum/freq-timeseries', {
+    params: {
+      freq_hz: freqHz,
+      start_ms: startMs,
+      end_ms: endMs,
+      station_ids: stationIds.join(','),
+    },
+    timeout: 30_000,   // may need extra time for large time ranges
+  }).then(r => r.data)
+}
+
+// ── Tasks ──────────────────────────────────────────────────────────────────
+
+/** @returns {Promise<{tasks: Array, total: number}>} */
+export function listTasks() {
+  return http.get('/tasks').then(r => r.data)
+}
+
+/**
+ * @param {object} task  { type, params, station_ids, stream_fps }
+ * @returns {Promise<{task_id, dispatched, not_connected}>}
+ */
+export function createTask(task) {
+  return http.post('/tasks', task).then(r => r.data)
+}
+
+/** @param {string} taskId */
+export function getTask(taskId) {
+  return http.get(`/tasks/${taskId}`).then(r => r.data)
+}
