@@ -181,6 +181,16 @@ async function query() {
     error.value = '请输入有效的频率（MHz）'
     return
   }
+  if (preset.value === 'custom') {
+    if (!customStart.value || !customEnd.value) {
+      error.value = '请先选择自定义时间范围'
+      return
+    }
+    if (Number(customEnd.value) <= Number(customStart.value)) {
+      error.value = '结束时间必须晚于开始时间'
+      return
+    }
+  }
 
   loading.value = true
   error.value = ''

@@ -189,7 +189,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h } from 'vue'
 import * as echarts from 'echarts'
 import { getStations, listTasks, createTask, getTask } from '../api/index.js'
 
@@ -324,43 +324,44 @@ function parseJson(s) {
 }
 
 // ── Mini spectrum chart component ─────────────────────────────────────────────
+// Defined as an inline component so it owns its own lifecycle and disposes
+// the ECharts instance on unmount (avoids memory leaks).
 
 const SpectrumMini = defineComponent({
+  name: 'SpectrumMini',
   props: { b64: String, meta: Object },
   setup(props) {
     const el = ref(null)
     let chart = null
+    let alive = true
 
-    function render() {
-      if (!el.value || !props.b64 || !props.meta) return
-      if (chart) chart.dispose()
-      chart = echarts.init(el.value, 'dark')
-
-      // Decode base64 + gzip + float32
-      const binary = atob(props.b64)
+    function decode(b64, meta) {
+      if (!b64 || !meta) return
+      const binary = atob(b64)
       const bytes  = new Uint8Array(binary.length)
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
 
-      // Decompress gzip using DecompressionStream
       const ds = new DecompressionStream('gzip')
       const writer = ds.writable.getWriter()
       writer.write(bytes)
       writer.close()
+
       new Response(ds.readable).arrayBuffer().then(buf => {
+        if (!alive || !el.value) return
+        if (!chart) chart = echarts.init(el.value, 'dark')
+
         const floats = new Float32Array(buf)
-        const step = props.meta.freq_step_hz ?? 25_000
-        const f0   = props.meta.freq_start_hz ?? 20e6
-        const data = []
-        for (let i = 0; i < floats.length; i++) {
-          data.push([(f0 + i * step) / 1e6, Math.round(floats[i] * 10) / 10])
-        }
+        const step   = meta.freq_step_hz  ?? 25_000
+        const f0     = meta.freq_start_hz ?? 20e6
+        const data   = Array.from(floats, (v, i) => [(f0 + i * step) / 1e6, Math.round(v * 10) / 10])
+
         chart.setOption({
           backgroundColor: 'transparent',
           animation: false,
           grid: { left: 52, right: 8, top: 4, bottom: 24 },
           xAxis: {
             type: 'value', min: 'dataMin', max: 'dataMax',
-            axisLabel: { color: '#64748b', fontSize: 9, formatter: v => v.toFixed(0) + '' },
+            axisLabel: { color: '#64748b', fontSize: 9, formatter: v => v.toFixed(0) },
             axisLine: { lineStyle: { color: '#1e293b' } },
             splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
           },
@@ -375,19 +376,26 @@ const SpectrumMini = defineComponent({
             symbol: 'none', sampling: 'lttb',
             lineStyle: { color: '#38bdf8', width: 1 },
             areaStyle: {
-              color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
                 colorStops: [
                   { offset: 0, color: 'rgba(56,189,248,0.18)' },
-                  { offset: 1, color: 'rgba(56,189,248,0)' },
-                ]},
+                  { offset: 1, color: 'rgba(56,189,248,0)'    },
+                ],
+              },
             },
           }],
         }, true)
-      })
+      }).catch(() => {/* ignore decode errors for stale data */})
     }
 
-    return () => h('div', { ref: el, style: 'width:100%;height:160px', onVnodeMounted: render })
+    onMounted(() => decode(props.b64, props.meta))
+    watch(() => props.b64, () => decode(props.b64, props.meta))
+    onUnmounted(() => { alive = false; chart?.dispose(); chart = null })
+
+    return { el }
   },
+  template: '<div ref="el" style="width:100%;height:160px"></div>',
 })
 </script>
 

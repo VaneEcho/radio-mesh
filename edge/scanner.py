@@ -186,12 +186,12 @@ class Scanner:
                 result_b64, result_meta = _encode_frame(frame)
 
             elif task_type == "channel_scan":
+                step_hz = float(params["step_hz"])
                 frame = driver.channel_scan(
                     start_hz=float(params["start_hz"]),
                     stop_hz=float(params["stop_hz"]),
-                    step_hz=float(params["step_hz"]),
-                    demod_bw_hz=float(params.get("demod_bw_hz", params["step_hz"] * 0.8)),
-                    dwell_s=float(params.get("dwell_s", 0.05)),
+                    step_hz=step_hz,
+                    demod_bw_hz=float(params.get("demod_bw_hz", step_hz * 0.8)),
                     station_id=self._station_id,
                 )
                 result_b64, result_meta = _encode_frame(frame)
@@ -200,8 +200,6 @@ class Scanner:
                 if_frame = driver.if_analysis(
                     center_hz=float(params["center_hz"]),
                     span_hz=float(params.get("span_hz", 200_000)),
-                    demod_bw_hz=float(params.get("demod_bw_hz", 15_000)),
-                    demod_mode=params.get("demod_mode", "FM"),
                     station_id=self._station_id,
                 )
                 result_b64, result_meta = _encode_frame(if_frame)

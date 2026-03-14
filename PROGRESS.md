@@ -4,7 +4,7 @@
 
 ---
 
-## 当前阶段：任务下发链路打通，频点查询上线，推进 Phase 4 & Phase 7
+## 当前阶段：Phase 4 完成，Phase 5 任务链路完成，下一步历史回放（Phase 7）
 
 整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
 
@@ -16,14 +16,9 @@
 [██████████] Phase 0  基础框架          ✅ 完成
 [█████████░] Phase 1  边缘扫描引擎       核心+任务执行完成，实时流待实现
 [██████████] Phase 2  云端数据接收       ✅ 完成
-[█████████░] Phase 3  前端基础           基础+频点查询完成，实时推送待实现
-[████░░░░░░] Phase 4  频率指配工具       API 进行中
-[░░░░░░░░░░] Phase 5  批量扫描+实时流    任务下发骨架完成，流式推送待实现
-[░░░░░░░░░░] Phase 6  AI 信号分析        未启动
-[░░░░░░░░░░] Phase 7  历史回放           未启动
-[░░░░░░░░░░] Phase 8  台站信号库         未启动
-```
-[░░░░░░░░░░] Phase 5  批量扫描+实时流    未启动
+[█████████░] Phase 3  前端基础           基础+频点查询+任务控制台完成
+[██████████] Phase 4  频率指配工具       ✅ 完成（API + 前端）
+[████░░░░░░] Phase 5  批量扫描+实时流    任务下发+任务控制台完成，流式推送待实现
 [░░░░░░░░░░] Phase 6  AI 信号分析        未启动
 [░░░░░░░░░░] Phase 7  历史回放           未启动
 [░░░░░░░░░░] Phase 8  台站信号库         未启动
@@ -112,11 +107,12 @@
 
 ## 进行中
 
-### Phase 4 — 频率指配工具
-- [x] 后端 DB 层：`query_free_channels()` 查询函数（读取最近 N 帧，统计每信道最大电平）
-- [x] `POST /api/v1/freq-assign` 接口：输入频段+信道宽度+阈值 → 返回空闲信道列表
-- [ ] 前端输入表单 + 信道对照表展示（`FreqAssignView.vue`）
-- [ ] CSV 导出
+### Phase 4 — 频率指配工具 ✅
+- [x] 后端 DB 层：`query_channel_max_levels()` — 解压历史帧，按信道宽度分组，计算每信道最大电平
+- [x] `POST /api/v1/freq-assign` — 输入频段+信道宽度+阈值+观测窗口 → 返回全信道占用表
+- [x] `FreqAssignView.vue` — 站点选择、频段+信道宽度预设、阈值滑块、观测窗口选择
+- [x] ECharts 柱状图概览（绿=空闲/红=占用，阈值标注线）
+- [x] 信道明细表：全部/空闲/占用/无数据 标签页过滤 + 频率搜索 + CSV 导出
 
 ### Phase 5 — 任务下发 + 实时流
 - [x] `cloud/connection_manager.py` — WebSocket 连接注册中心
@@ -166,3 +162,4 @@
 | 2026-03-13 | v0.6 | Phase 1 核心代码完成（scanner/aggregator/uploader/em550/mock 驱动）；Phase 2 API 骨架完成（FastAPI + ingest/query/band_rules 路由）；docker-compose.yml 开发环境就绪 |
 | 2026-03-13 | v0.7 | Phase 0 完成：stations 表（DB Schema）+ 站点注册 REST API + WebSocket 心跳端点（Cloud）；edge/heartbeat.py 注册+保活线程（Edge）；Phase 0 全部打通 |
 | 2026-03-13 | v0.8 | Phase 3 基础完成：frontend/ Vue 3 项目（站点总览 / 频谱查看 / 频段规则）；Nginx 多阶段 Docker；docker-compose 三服务全栈，localhost:3000 可用 |
+| 2026-03-14 | v0.9 | Phase 4 完成：freq-assign API（信道占用计算）+ FreqAssignView.vue（柱图+表格+CSV）；Phase 5 任务链路：connection_manager + tasks 表 + tasks router + edge 任务接收/执行/上报；FreqQueryView（频点历史查询+时间轴）；TaskView（任务控制台+内联频谱预览）；修复 edge scanner 驱动调用参数错误 |
