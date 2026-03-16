@@ -9,9 +9,9 @@
 
 ```
 Phase 0–8  全部代码已实现，合并入主分支
-Phase 9    音频解调流      ❌ 未实现（设计已在 ARCHITECTURE.md §12.2）
-Phase 10   工程化加固      ❌ 未实现（日志/Redis/数据保留/鉴权）
-Phase 11   部署运维文档    ❌ 未写
+Phase 9    音频解调流      🔶 Cloud WS + 前端播放器已实现；Edge 硬件路径等设备
+Phase 10   工程化加固      🔶 日志/数据保留/鉴权已实现；Redis pub/sub 待实现
+Phase 11   部署运维文档    ✅ docs/DEPLOYMENT.md 已写
 联调阶段   等待真实设备接入  ⏳ 取决于硬件到位时间
 ```
 
@@ -261,16 +261,20 @@ healthcheck:
 ## 优先级总结
 
 ```
+已完成（不依赖硬件）：
+  ├── ✅ Phase 10.1  结构化日志（edge/logger.py + cloud/main.py JSON 格式）
+  ├── ✅ Phase 10.3  数据保留策略（db.delete_old_frames + _retention_loop）
+  ├── ✅ Phase 10.4  API 鉴权完善（Bearer Token 校验，proper 401 响应）
+  ├── ✅ Phase 11    部署文档（docs/DEPLOYMENT.md）
+  └── ✅ Phase 9 前半 音频 Cloud WS + 前端 Web Audio 播放器（时间戳对齐）
+
 立即可以动工（不依赖硬件）：
-  ├── Phase 10.1  结构化日志（1天）
-  ├── Phase 10.3  数据保留策略（半天）
-  ├── Phase 10.4  API 鉴权完善（半天）
-  ├── Phase 11    部署文档（1天）
-  └── Phase 9     音频解调流设计（先把 Edge → Cloud WS 协议和前端 WebAudio 部分做好，EM550 路径等设备到位）
+  ├── Phase 10.2  Redis pub/sub（多 Worker stream_manager 后端）
+  └── Phase 9 Edge 软件解调（edge/demod.py，scipy，RSA306B IQ → PCM）
 
 等设备到位后：
-  ├── EM550 联调（逐项验证）
-  ├── EM550 Annex E 音频路径（Phase 9 路径 A）
+  ├── EM550 联调（逐项验证，见联调清单）
+  ├── EM550 Annex E 音频路径（Phase 9 路径 A，edge/audio.py）
   └── RSA306B 联调
 ```
 

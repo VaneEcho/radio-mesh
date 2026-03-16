@@ -33,6 +33,7 @@ import time
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from .. import db
+from ..audio_manager import audio_manager
 from ..connection_manager import manager
 from ..models import StationOut, StationRegisterAck, StationRegisterIn
 from ..stream_manager import stream_manager
@@ -138,6 +139,12 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
                 if stream_manager.subscriber_count(station_id) > 0:
                     asyncio.ensure_future(stream_manager.broadcast(station_id, msg))
                     log.debug("WS stream_frame relay: station=%s", station_id)
+
+            elif mtype == "audio_chunk":
+                # Edge is pushing a demodulated audio chunk; relay to audio subscribers
+                if audio_manager.subscriber_count(station_id) > 0:
+                    asyncio.ensure_future(audio_manager.broadcast(station_id, msg))
+                    log.debug("WS audio_chunk relay: station=%s", station_id)
 
             else:
                 log.debug("WS unknown msg from %s: type=%s", station_id, mtype)

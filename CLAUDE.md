@@ -276,6 +276,42 @@ When adding features, test manually with mock device before hardware integration
 
 ---
 
+## Product Vision (from Demo Prototypes)
+
+Two prototype demos (`docs/rf-cloud-demo/`, `docs/天璇/`) define the aspirational feature set. Use them as the north star when planning new features.
+
+### RF·CLOUD Demo — High-level Concepts
+- **Multi-station dashboard:** 10-station grid with animated task status and daily AI summary briefings
+- **Spectrum + direction finding:** Full waterfall (20 MHz–8 GHz), clickable signal shortcuts, Leaflet map with bearing lines and CEP confidence circles
+- **Signal alert workflow:** Unknown signal → detected → classified → AI verdict (modulation, confidence %, natural-language determination)
+- **AI modulation recognition pipeline:** IQ data → STFT feature extraction → CNN classifier (87 modulations) → frame sync analysis → protocol matching → comprehensive verdict
+- **NLP task intake:** Paste or upload a complaint document → AI extracts frequency/time/location → structured task → station dispatch → parallel collection → report generation
+- **Audio content analysis:** Broadcast signal demodulated to audio → speech-to-text → content moderation verdict
+
+### 天璇 Demo — Technical Tooling Concepts
+- **Frequency pair planner (Feature 1):** Duplex uplink/downlink pair selection with real-time + Max Hold overlay on both bands; interactive right-click marks; auto availability check (Max Hold < −75 dBm = green)
+- **Bulk site collection (Feature 2):** Simultaneously trigger all stations on a given center/span/demod_bw/duration; collect Max Hold; rank sites by peak level; click to expand per-site spectrum
+- **Background scan + query (Feature 3):** 1-minute granularity continuous scan in background; query by frequency + time range; per-site time-series charts with live append; quick shortcuts for common frequencies (GPS L1, FM, walkie, 5G)
+
+### Data Simulation Model (天璇 `data.js`)
+The demo simulates these signal types — use as test scenarios for mock driver validation:
+- FM broadcast (88.7–107.4 MHz, 11 stations, site-dependent attenuation)
+- VHF/UHF walkie-talkie (always-on 95% duty vs intermittent 20–40%, PTT state machine)
+- Aviation VHF (118–137 MHz, 15% activity)
+- GSM/4G/5G carrier subbands with 3-operator split
+- GNSS interference events (GPS L1 1575.42 MHz, BeiDou B1 1561.098 MHz, sporadic 2–5 min)
+
+### Features Not Yet Implemented (Future Phases)
+- Direction finding (DF) with bearing lines and location estimation map
+- Spatial spectrum processing (simultaneous multi-emitter detection on same frequency)
+- AI modulation classification (CNN-based)
+- NLP task intake from documents
+- Automatic report generation
+- Audio content extraction and moderation
+- Natural language daily situation briefings
+
+---
+
 ## Phase 9–11 Roadmap (Pending)
 
 | Phase | Feature | Key work |
