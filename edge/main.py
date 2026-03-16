@@ -93,10 +93,19 @@ def main() -> None:
 
     scanner = Scanner(cfg=cfg, uploader=uploader, task_queue=task_queue, heartbeat=heartbeat)
 
+    # ── Audio streamer (Phase 9) ───────────────────────────────────────────
+    # AudioStreamer is given a reference to the scanner so it can access
+    # scanner.driver once the device connects (set in scanner.run()).
+    from .audio import AudioStreamer
+
+    audio = AudioStreamer(cfg=cfg, heartbeat=heartbeat, scanner=scanner)
+    audio.start()  # no-op if audio.enabled=false
+
     log.info("Starting scan loop …  (Ctrl-C to stop)")
     try:
         scanner.run()
     finally:
+        audio.stop()
         heartbeat.stop()
         uploader.stop()
         log.info("Edge agent shut down cleanly.")

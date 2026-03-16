@@ -426,6 +426,72 @@ class EM550Driver(BaseSpectrumDriver):
 
     # ── Utility / setup ──────────────────────────────────────────────────
 
+    # ── Annex E: Audio stream control ────────────────────────────────────
+
+    def start_audio_stream(
+        self,
+        demod_mode: str = "FM",
+        sample_rate: int = 16_000,
+        udp_port: int = 5556,
+    ) -> None:
+        """
+        Configure and start EM550 Annex E audio output (UDP PCM stream).
+
+        The EM550 will push raw PCM audio over UDP to the edge node's
+        listening port.  Call ``edge/audio.py::AudioStreamer`` with
+        ``mode: hardware`` to receive it.
+
+        Parameters
+        ----------
+        demod_mode: Demodulation mode — "FM" | "AM" | "USB" | "LSB"
+        sample_rate: Output PCM sample rate (Hz) — 8000 | 16000 | 48000
+        udp_port:   Destination UDP port on the edge host
+
+        Note: SCPI commands for Annex E Mass Data Output are in the EM550
+        manual Annex E.  The commands below are representative; verify exact
+        syntax against your firmware version.  Common variant commands:
+          SENSe:DEMod:MODE FM
+          SENSe:DEMod:AUDio:SAMPlerate 16000
+          SENSe:DEMod:AUDio:UDP:PORT 5556
+          SENSe:DEMod:AUDio:UDP:STReam ON
+        """
+        self._require_connected()
+        w = self._instr.write
+
+        # Set CW mode (tune to the IF analysis frequency first)
+        w("SENSe:FREQuency:MODE CW")
+
+        # Set demodulator
+        mode_map = {"FM": "FM", "AM": "AM", "USB": "USB", "LSB": "LSB"}
+        em550_mode = mode_map.get(demod_mode.upper(), "FM")
+        w(f"SENSe:DEMod:MODE {em550_mode}")
+
+        # Configure audio output parameters
+        w(f"SENSe:DEMod:AUDio:SAMPlerate {sample_rate}")
+        w(f"SENSe:DEMod:AUDio:UDP:PORT {udp_port}")
+
+        # Enable UDP audio stream (Annex E Mass Data Output)
+        w("SENSe:DEMod:AUDio:UDP:STReam ON")
+
+        # Start measurement
+        w("ABORt")
+        w("INITiate:IMMediate")
+
+        log.info(
+            "EM550 Annex E audio stream started: mode=%s rate=%d Hz udp_port=%d",
+            em550_mode, sample_rate, udp_port,
+        )
+
+    def stop_audio_stream(self) -> None:
+        """Stop EM550 Annex E audio UDP stream."""
+        self._require_connected()
+        try:
+            self._instr.write("SENSe:DEMod:AUDio:UDP:STReam OFF")
+            self._instr.write("ABORt")
+            log.info("EM550 Annex E audio stream stopped")
+        except Exception as exc:
+            log.warning("EM550: stop_audio_stream error: %s", exc)
+
     def reset(self) -> None:
         """Send *RST and re-apply driver defaults."""
         self._require_connected()

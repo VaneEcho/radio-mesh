@@ -31,6 +31,8 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
+from .audio_manager import audio_manager
+from .stream_manager import stream_manager
 from .routers import (
     analysis, audio, band_rules, freq_assign, ingest, query,
     signals, stations, stream, tasks,
@@ -149,6 +151,8 @@ async def token_auth(request: Request, call_next) -> Response:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 _DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "90"))
+_STREAM_BACKEND = os.environ.get("STREAM_BACKEND", "memory").lower()
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 _expiry_task: asyncio.Task | None = None
 _retention_task: asyncio.Task | None = None
@@ -190,6 +194,16 @@ async def startup() -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db.init_pool)
     await loop.run_in_executor(None, db.init_schema)
+
+    # Init stream managers (Redis backend if configured)
+    redis_url = _REDIS_URL if _STREAM_BACKEND == "redis" else None
+    await stream_manager.init(redis_url=redis_url)
+    await audio_manager.init(redis_url=redis_url)
+    if redis_url:
+        log.info("Stream backend: Redis (%s)", redis_url)
+    else:
+        log.info("Stream backend: in-memory (single-worker mode)")
+
     _expiry_task = asyncio.create_task(_task_expiry_loop())
     _retention_task = asyncio.create_task(_retention_loop())
     log.info("RF·MESH Cloud API ready")
@@ -201,6 +215,8 @@ async def shutdown() -> None:
     for t in (_expiry_task, _retention_task):
         if t:
             t.cancel()
+    await stream_manager.close()
+    await audio_manager.close()
     db.close_pool()
     log.info("RF·MESH Cloud API shut down")
 

@@ -262,20 +262,14 @@ healthcheck:
 
 ```
 已完成（不依赖硬件）：
-  ├── ✅ Phase 10.1  结构化日志（edge/logger.py + cloud/main.py JSON 格式）
-  ├── ✅ Phase 10.3  数据保留策略（db.delete_old_frames + _retention_loop）
-  ├── ✅ Phase 10.4  API 鉴权完善（Bearer Token 校验，proper 401 响应）
-  ├── ✅ Phase 11    部署文档（docs/DEPLOYMENT.md）
-  └── ✅ Phase 9 前半 音频 Cloud WS + 前端 Web Audio 播放器（时间戳对齐）
-
-立即可以动工（不依赖硬件）：
-  ├── Phase 10.2  Redis pub/sub（多 Worker stream_manager 后端）
-  └── Phase 9 Edge 软件解调（edge/demod.py，scipy，RSA306B IQ → PCM）
+  ├── ✅ Phase 9  音频全链路（demod.py、if_analysis_iq、AudioStreamer、EM550 Annex E、heartbeat、前端播放器）
+  ├── ✅ Phase 10 工程化加固全部（日志/数据保留/鉴权/Redis pub/sub）
+  └── ✅ Phase 11 部署文档（docs/DEPLOYMENT.md）
 
 等设备到位后：
-  ├── EM550 联调（逐项验证，见联调清单）
-  ├── EM550 Annex E 音频路径（Phase 9 路径 A，edge/audio.py）
-  └── RSA306B 联调
+  ├── EM550 联调（逐项验证，见下方联调清单）
+  ├── EM550 Annex E 验证（start_audio_stream SCPI 命令语法确认）
+  └── RSA306B 联调（if_analysis_iq IQ 数据格式确认）
 ```
 
 ---

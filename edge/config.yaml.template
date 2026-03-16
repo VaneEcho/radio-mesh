@@ -69,3 +69,27 @@ debug:
 stream:
   enabled: false
   fps: 5
+
+# ── 音频解调流（Phase 9）──────────────────────────────────────────────────────
+# 当边缘节点执行 IF Analysis 任务时，可同步推送解调后的音频到前端。
+# 音频块时间戳与频谱帧对齐，前端可同步播放。
+audio:
+  enabled: false          # true = 启用音频流
+
+  # 工作模式：
+  #   hardware — EM550 Annex E UDP 推流（设备原生解调，最低延迟）
+  #   software — 软件解调（RSA306B IQ 采集 + numpy/scipy，无需 EM550 Annex E 选件）
+  mode: software
+
+  # ── hardware 模式参数（EM550 Annex E）──────────────────────────────────────
+  udp_host: ""            # 监听地址（空 = 所有网卡）
+  udp_port: 5556          # EM550 推送的 UDP 端口（需与设备配置一致）
+
+  # ── software 模式参数（RSA306B IQ 采集 + 软件解调）──────────────────────────
+  demod_mode: FM          # FM | AM | USB | LSB | CW
+  center_hz: 97400000     # IF Analysis 中心频率（Hz），例：97.4 MHz FM 广播
+  span_hz: 400000         # IQ 采集带宽（Hz）；FM 推荐 200k–400k
+
+  # ── 通用参数 ─────────────────────────────────────────────────────────────────
+  sample_rate: 16000      # 输出 PCM 采样率（Hz）；推荐 16000 或 48000
+  chunk_duration_s: 0.1   # 每块音频时长（秒）；0.1 = 100 ms 延迟

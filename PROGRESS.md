@@ -107,18 +107,24 @@
 
 > 详细任务分解见 **`NEXT.md`**（优先级、实现步骤、联调清单）
 
-### Phase 9 — 音频解调流（🔶 部分完成）
+### Phase 9 — 音频解调流（✅ Edge + Cloud + Frontend 全链路完成）
 - [x] Cloud 音频 WebSocket 端点（`cloud/audio_manager.py` + `cloud/routers/audio.py`）
 - [x] Cloud stations WS 识别并转发 `audio_chunk` 消息
 - [x] 前端音频播放器（`RealtimeView.vue`，Web Audio API，时间戳对齐，音量控制）
-- [ ] Edge EM550 Annex E UDP 音频接收（`edge/audio.py`）— 等待硬件
-- [ ] Edge 软件解调降级（`edge/demod.py`，scipy）— 可离线实现
+- [x] Edge `edge/demod.py`：软件解调（FM/AM/USB/LSB/CW，numpy + scipy，含 get_optimal_iq_sample_rate）
+- [x] Edge `edge/drivers/rsa306b.py::if_analysis_iq()`：RSA306B IQ 数据采集，返回 complex64 + 频谱帧
+- [x] Edge `edge/audio.py`：AudioStreamer 双模式（hardware=UDP/software=IQ+demod），scanner.driver 懒加载
+- [x] Edge `edge/drivers/em550.py::start_audio_stream()`/`stop_audio_stream()`：Annex E UDP 控制
+- [x] Edge `edge/heartbeat.py::send_audio_chunk()`：audio_chunk WS 消息发送；`send_frame()` 加时间戳
+- [x] Edge `edge/main.py`：AudioStreamer 启动/停止集成
+- [x] `edge/config.yaml.template`：audio 配置节
+- [x] `requirements.txt`：加 scipy
 
-### Phase 10 — 工程化加固（🔶 部分完成）
+### Phase 10 — 工程化加固（✅ 全部完成）
 - [x] 结构化日志（`edge/logger.py` JSON 格式 + 按天滚动；`cloud/main.py` 同步更新）
 - [x] 数据保留策略（`cloud/db.py::delete_old_frames()` + `cloud/main.py::_retention_loop()`，`DATA_RETENTION_DAYS` 环境变量）
 - [x] API 鉴权完善（Bearer Token 实际校验，区分 missing/invalid，返回 WWW-Authenticate header）
-- [ ] Redis pub/sub 替换 stream_manager 内存结构（支持多 Worker）— 按需实现
+- [x] Redis pub/sub 双后端（`cloud/stream_manager.py` + `cloud/audio_manager.py` 支持 `STREAM_BACKEND=redis|memory`；docker-compose 加 Redis 服务）
 
 ### Phase 11 — 部署文档（✅ 完成）
 - [x] `docs/DEPLOYMENT.md`（Docker 部署、systemd Edge 服务、Nginx SSL、设备连接、多站点指南、故障排查）
@@ -145,3 +151,4 @@
 | 2026-03-16 | v1.1 | **Phase 6/7/8 全部实现**：历史回放、AI信号分析、信号库；RSA306B驱动完整实现；任务过期逻辑 |
 | 2026-03-16 | v1.2 | 架构修正：确认Edge只做时间压缩，移除边缘侧频率合并（preprocessor.py）；文档更新（PLAN/ARCHITECTURE/REQUIREMENTS/PROGRESS）；实时流默认帧率改为10fps；音频×频谱时间对齐要求写入需求文档 |
 | 2026-03-16 | v1.3 | Phase 9/10/11 部分实现：结构化JSON日志（edge+cloud）、数据保留策略、API鉴权加固、Cloud音频WebSocket（audio_manager+router）、前端音频播放器（Web Audio API+时间戳对齐）、DEPLOYMENT.md部署文档；CLAUDE.md创建+从demo原型提炼产品愿景 |
+| 2026-03-16 | v1.4 | Phase 9/10 全部完成：软件解调器（demod.py FM/AM/USB/LSB）、RSA306B IQ采集（if_analysis_iq）、AudioStreamer双模式（hardware/software）、EM550 Annex E控制、heartbeat音频发送、Redis pub/sub双后端（stream_manager+audio_manager）、docker-compose加Redis、requirements.txt加scipy |
