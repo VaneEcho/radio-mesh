@@ -8,13 +8,15 @@
 
 整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
 
+> **架构确认（2026-03-16）：** 系统分两种工作模式 —— **空闲/后台扫描**（1分钟 max-hold 聚合，REST 上传）和 **任务实时流**（1/FPS秒聚合，默认 10fps，WebSocket 推送）。Edge 只做时间维度压缩，从不合并频率 bin；频率聚合（按 band_rules 信道合并）在云端查询时动态计算。
+
 ---
 
 ## 整体进度概览
 
 ```
 [██████████] Phase 0  基础框架          ✅ 完成
-[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送 + RSA306B驱动 + 预处理器）
+[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送 + RSA306B驱动 + 1分钟聚合器）
 [██████████] Phase 2  云端数据接收       ✅ 完成
 [██████████] Phase 3  前端基础           ✅ 完成（站点/频谱/查询/任务/实时）
 [██████████] Phase 4  频率指配工具       ✅ 完成（API + 前端）
@@ -45,7 +47,6 @@
 - [x] EM550 驱动：`edge/drivers/em550.py`（PSCan 自动分段、IFPAN、FSCan、dBµV→dBm）
 - [x] Mock 驱动：`edge/drivers/mock.py`（仿真噪底 + 8 组预置信号，无需硬件）
 - [x] **RSA306B 驱动**：`edge/drivers/rsa306b.py`（tekrsa-api-wrap，USB，40MHz分段拼接，完整实现）
-- [x] **频段预处理器**：`edge/preprocessor.py`（按 band_rules.yaml 合并25kHz bin，60-80%数据压缩）
 - [x] 全频段扫描主循环：`edge/scanner.py`（SIGINT/SIGTERM 优雅退出）
 - [x] 1 分钟聚合器：`edge/aggregator.py`（按窗口合并，每 bin 取最大值）
 - [x] 聚合包上传：`edge/uploader.py`（独立线程，Queue，断网本地落文件）
@@ -126,4 +127,5 @@
 | 2026-03-13 | v0.8 | Phase 3 前端基础 |
 | 2026-03-14 | v0.9 | Phase 4 freq-assign + Phase 5 任务链路 |
 | 2026-03-16 | v1.0 | Phase 5 实时流完成；docs/ARCHITECTURE.md |
-| 2026-03-16 | v1.1 | **Phase 6/7/8 全部实现**：历史回放、AI信号分析、信号库；RSA306B驱动完整实现；频段预处理器；任务过期逻辑 |
+| 2026-03-16 | v1.1 | **Phase 6/7/8 全部实现**：历史回放、AI信号分析、信号库；RSA306B驱动完整实现；任务过期逻辑 |
+| 2026-03-16 | v1.2 | 架构修正：确认Edge只做时间压缩，移除边缘侧频率合并（preprocessor.py）；文档更新（PLAN/ARCHITECTURE/REQUIREMENTS/PROGRESS）；实时流默认帧率改为10fps；音频×频谱时间对齐要求写入需求文档 |

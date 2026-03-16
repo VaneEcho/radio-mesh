@@ -38,9 +38,9 @@
 
 **核心约定：**
 - Edge 永远主动连 Cloud，Cloud 不主动连 Edge（支持多站点 NAT 穿透场景）
-- Edge 不做业务逻辑（信道划分、异常判断都在 Cloud 侧）
-- 实时流按需触发（`cloud.stream_fps > 0` 时开启），不常驻占带宽
-- 每次全频段扫描结果在 Edge 聚合为"1分钟最大值快照"后再上传，节省带宽
+- **Edge 只做时间维度压缩，不做频率维度合并**（信道划分、频段聚合、异常判断都在 Cloud 侧）
+- 实时流按需触发（任务模式 `stream_fps > 0` 时开启），不常驻占带宽
+- 两种工作模式（见下方第 3 节）：闲时后台扫描 vs 云端任务模式
 
 ---
 
@@ -53,8 +53,8 @@ radio-mesh/
 │   │   ├── base.py                 # BaseSpectrumDriver ABC + SpectrumFrame dataclass
 │   │   ├── em550.py                # R&S EM550 SCPI 驱动（PSCan/IFPAN/FSCan）
 │   │   ├── mock.py                 # 仿真驱动（噪底 + 8 组预置信号，无需硬件）
-│   │   └── rsa306b.py              # RSA306B 占位（接口定义完毕，实现待补）
-│   ├── aggregator.py               # 1分钟滑动窗口聚合（每 bin 取最大值）
+│   │   └── rsa306b.py              # Tektronix RSA306B USB 驱动（tekrsa-api-wrap，40MHz分段）
+│   ├── aggregator.py               # 时间窗口聚合（每 bin 取最大值，不做频率合并）
 │   ├── heartbeat.py                # 注册 + WS 心跳线程 + 任务接收 + 实时流推送
 │   ├── main.py                     # 入口：组装 Heartbeat + Uploader + Scanner
 │   ├── models.py                   # SpectrumBundle pydantic 上传模型
@@ -65,13 +65,15 @@ radio-mesh/
 │
 ├── cloud/                          # 云端后端（FastAPI + psycopg2）
 │   ├── routers/
+│   │   ├── analysis.py             # 信号分析（本地检测 + Claude/OpenAI AI后端）
 │   │   ├── band_rules.py           # 频段规则增删改查
-│   │   ├── freq_assign.py          # 信道占用计算 API
+│   │   ├── freq_assign.py          # 信道占用计算 API（云端按 band_rules 动态聚合）
 │   │   ├── ingest.py               # 聚合包接收（Edge → Cloud 上传端点）
-│   │   ├── query.py                # 历史数据查询 + 频点时间轴
+│   │   ├── query.py                # 历史数据查询 + 频点时间轴 + 历史回放快照
+│   │   ├── signals.py              # 信号库 CRUD
 │   │   ├── stations.py             # 站点注册 + WS 心跳端点（含 stream_frame 转发）
 │   │   ├── stream.py               # 前端实时流 WS 订阅端点
-│   │   └── tasks.py                # 任务增删改查 + Cloud→Edge 下发
+│   │   └── tasks.py                # 任务增删改查 + Cloud→Edge 下发 + 任务过期
 │   ├── connection_manager.py       # Edge WS 连接注册中心（1:1 per station）
 │   ├── db.py                       # 连接池 + Schema + 全部 CRUD 函数
 │   ├── main.py                     # FastAPI 应用（路由挂载、CORS、lifespan）
@@ -87,13 +89,16 @@ radio-mesh/
 │   │   ├── App.vue                 # 布局框架 + 侧边栏导航
 │   │   ├── main.js                 # 应用入口（注册 ElementPlus + Router）
 │   │   └── views/
-│   │       ├── StationsView.vue    # 站点总览（在线/离线卡片，10s 自动刷新）
-│   │       ├── SpectrumView.vue    # 历史频谱图（按帧浏览）
-│   │       ├── FreqQueryView.vue   # 频点历史查询（时间轴 + 多站排名）
-│   │       ├── FreqAssignView.vue  # 频率指配工具（信道占用图表 + CSV 导出）
-│   │       ├── TaskView.vue        # 任务下发控制台（创建/列表/结果频谱预览）
-│   │       ├── RealtimeView.vue    # 实时频谱（折线图 + 60帧瀑布图）
-│   │       └── BandRulesView.vue   # 频段规则管理（增删改查）
+│   │       ├── StationsView.vue        # 站点总览（在线/离线卡片，10s 自动刷新）
+│   │       ├── SpectrumView.vue        # 历史频谱图（按帧浏览）
+│   │       ├── FreqQueryView.vue       # 频点历史查询（时间轴 + 多站排名）
+│   │       ├── FreqAssignView.vue      # 频率指配工具（信道占用图表 + CSV 导出）
+│   │       ├── TaskView.vue            # 任务下发控制台（创建/列表/结果频谱预览）
+│   │       ├── RealtimeView.vue        # 实时频谱（折线图 + 60帧瀑布图）
+│   │       ├── PlaybackView.vue        # 历史回放（帧列表 + 播放控制 + A/B对比）
+│   │       ├── AnalysisView.vue        # 信号分析（本地检测 + AI解读 + 人工审核）
+│   │       ├── SignalLibraryView.vue   # 信号库管理（搜索 + 分页 + 编辑）
+│   │       └── BandRulesView.vue       # 频段规则管理（增删改查）
 │   ├── nginx.conf                  # /api → cloud:8000，含 WS 代理，SPA 回退
 │   ├── Dockerfile
 │   └── package.json
@@ -111,9 +116,46 @@ radio-mesh/
 
 ---
 
-## 3. 关键数据流
+## 3. 两种工作模式
 
-### 3.1 后台常规扫描（持续运行）
+### 模式一：闲时后台扫描（Background Scan）
+
+Edge 无任务时持续运行，做**时间维度压缩**后上传：
+
+| 参数 | 值 |
+|------|----|
+| 扫描范围 | 设备全频段（EM550: 20MHz–3.6GHz） |
+| 步进 | 25 kHz（上传原始粒度，不做频率合并） |
+| 时间窗口 | 60 秒（`aggregation.interval_s`，可配置） |
+| 聚合方式 | 每 bin 取最大值（max-hold） |
+| 上传节奏 | 每分钟一帧，约 100–200 KB（gzip 后） |
+
+### 模式二：任务模式（Task Mode）
+
+Cloud 下发任务时触发，Edge 暂停后台扫描，执行任务并**实时流传**给云端：
+
+| 参数 | 值 |
+|------|----|
+| 触发方式 | Cloud → Edge WS `task` 消息 |
+| 传输方式 | 实时流（不走每分钟聚合上传） |
+| FPS | 可配置：1 / 10 / 30 fps 或最大速率；**默认 10 fps** |
+| 聚合窗口 | 1/FPS 秒（10fps → 每 100ms 聚合一次） |
+| 聚合方式 | max-hold（默认）或 average（任务参数可指定） |
+| 前端展示 | RealtimeView.vue 实时显示 |
+
+> **FPS 参数的双重作用：** 降低 FPS → 减少带宽占用；提高 FPS → 提升时间分辨率（更细腻的动态）。
+
+### 数据压缩原则（两种模式共同）
+
+- **时间维度压缩**：Edge 负责（按窗口聚合后发送）
+- **频率维度聚合**：Cloud 负责（查询时按 band_rules 动态计算，不在写入时合并）
+- 原因：频段规则随时可能调整，云端统一管理，历史数据可用任意新规则重算
+
+---
+
+## 4. 关键数据流
+
+### 4.1 后台常规扫描（持续运行）
 
 ```
 Scanner._sweep()
@@ -138,7 +180,7 @@ Scanner._sweep()
 }
 ```
 
-### 3.2 任务下发与执行
+### 4.2 任务下发与执行
 
 ```
 前端 POST /api/v1/tasks
@@ -150,7 +192,7 @@ Scanner._sweep()
        └─ POST /api/v1/tasks/{task_id}/results  ← 回报结果
 ```
 
-### 3.3 实时流（按需）
+### 4.3 实时流（任务模式，按需）
 
 ```
 Edge Scanner._sweep() 每帧
@@ -591,28 +633,47 @@ Edge 任务执行完毕后通过 HTTP POST `/api/v1/tasks/{task_id}/results` 上
 
 ---
 
-## 11. 待构建模块
+## 11. 已实现功能汇总（v1.1）
 
-按优先级排序（均未实现）：
+所有 Phase 0–8 均已完成初步实现，待设备联调：
 
-### Phase 7 — 历史回放
-- `GET /api/v1/spectrum/snapshots`：给定时间点，返回最近一帧完整频谱
-- `HistoryView.vue`：电平时间轴折线图（已有 FreqQueryView 的基础可复用），点击时刻弹出历史频谱快照图
-- 多站点叠加展示
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| Phase 0 基础框架 | ✅ | Docker Compose + WS 心跳 + DB Schema |
+| Phase 1 边缘扫描 | ✅ | EM550 / RSA306B / Mock 驱动；1分钟聚合；任务执行 |
+| Phase 2 云端接收 | ✅ | 7个 REST 路由；TimescaleDB 存储 |
+| Phase 3 前端基础 | ✅ | 7个视图；Nginx + Docker |
+| Phase 4 频率指配 | ✅ | 信道占用计算（云端动态聚合）+ 可视化 |
+| Phase 5 任务+实时流 | ✅ | 任务链路；实时频谱；瀑布图；任务过期 |
+| Phase 6 AI 信号分析 | ✅ | 本地检测 + Claude/OpenAI；人工审核工作流 |
+| Phase 7 历史回放 | ✅ | 快照 API；逐帧播放；A/B 对比 |
+| Phase 8 信号库 | ✅ | CRUD API + 前端管理页 |
 
-### Phase 6 — AI 信号分析
-- 模板匹配初筛（本地规则，不调 AI）
-- 异常检测：带宽异常 / 电平基线偏离 / 频偏
-- AI 多后端接口层（统一输入格式，可切换 Qwen/OpenAI/Gemini/Kimi）
-- 人工核实工作流 UI
+## 12. 待完成 / 已知问题
 
-### Phase 8 — 台站信号库
-- `signal_records` 表：归档已知信号（频率、带宽、调制方式、归属台站）
-- 与任务结果 / AI 分析结果关联
-- 信号库管理前端页面
+### 12.1 联调阶段（接真实设备后）
+- EM550 实机验证（SCPI 参数、电平转换）
+- RSA306B 实机验证（tekrsa-api-wrap API 细节）
 
-### Phase 1 补全
-- 频段合并预处理器（目前上传原始 25kHz 粒度，尚未实现按 band_rules 合并后上传）
+### 12.2 音频解调流（规划中，未实现）
+
+IF 分析任务中的音频解调回传，设计方案：
+
+- **优先**：若接收机支持解调（EM550 Annex E UDP 音频输出），由接收机解调，Edge 接收 UDP 流转发至 Cloud
+- **降级**：若接收机不支持，Edge 对 IQ 数据做软件解调（AM/FM/SSB/CW），生成 PCM 音频
+- **同步约定**：音频流和频谱帧必须时间对齐（打同一时间戳），前端同步播放，允许整体有固定延迟，但音画不能偏差
+
+> 待实现：audio WebSocket 端点；前端音频播放器；Edge 音频采集/转发模块
+
+### 12.3 瀑布图
+- 当前方案：前端用历史频谱帧数据生成（每帧一行）
+- 待研究：是否需要在 Edge/Cloud 侧预生成图像（PNG/JPEG）再传输
+
+### 12.4 工程化（按需推进）
+- 多 Worker 支持（stream_manager 改用 Redis pub/sub）
+- 数据保留策略（定时清理 >3个月历史帧）
+- 结构化日志 + 按天滚动
+- Prometheus 指标暴露（可选）
 
 ---
 
