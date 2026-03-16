@@ -15,6 +15,7 @@ LOG_LEVEL      DEBUG / INFO / WARNING (default: INFO)
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -22,7 +23,10 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
-from .routers import band_rules, freq_assign, ingest, query, stations, stream, tasks
+from .routers import (
+    analysis, band_rules, freq_assign, ingest, query,
+    signals, stations, stream, tasks,
+)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -75,17 +79,38 @@ async def token_auth(request: Request, call_next) -> Response:
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
+_expiry_task: asyncio.Task | None = None
+
+
+async def _task_expiry_loop() -> None:
+    """Background loop: expire stale tasks every 5 minutes."""
+    while True:
+        await asyncio.sleep(300)  # 5 minutes
+        try:
+            loop = asyncio.get_running_loop()
+            n = await loop.run_in_executor(None, db.expire_stale_tasks, 30)
+            if n:
+                log.info("Background: expired %d stale task(s)", n)
+        except Exception:
+            log.exception("Task expiry loop error")
+
+
 @app.on_event("startup")
 async def startup() -> None:
+    global _expiry_task
     import asyncio
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, db.init_pool)
     await loop.run_in_executor(None, db.init_schema)
+    _expiry_task = asyncio.create_task(_task_expiry_loop())
     log.info("RF·MESH Cloud API ready")
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    global _expiry_task
+    if _expiry_task:
+        _expiry_task.cancel()
     db.close_pool()
     log.info("RF·MESH Cloud API shut down")
 
@@ -99,6 +124,8 @@ app.include_router(stations.router)
 app.include_router(tasks.router)
 app.include_router(freq_assign.router)
 app.include_router(stream.router)
+app.include_router(analysis.router)
+app.include_router(signals.router)
 
 
 # ── Health / root ─────────────────────────────────────────────────────────────

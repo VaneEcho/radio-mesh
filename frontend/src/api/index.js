@@ -109,3 +109,93 @@ export function getTask(taskId) {
 export function computeFreqAssign(req) {
   return http.post('/freq-assign', req, { timeout: 60_000 }).then(r => r.data)
 }
+
+// ── Snapshots (Phase 7: historical playback) ───────────────────────────────
+
+/**
+ * List available spectrum frame metadata for a station in a time window.
+ * @param {string} stationId
+ * @param {number} startMs
+ * @param {number} endMs
+ * @param {number} [limit=1000]
+ * @returns {Promise<{snapshots: Array, total: number}>}
+ */
+export function listSnapshots(stationId, startMs, endMs, limit = 1000) {
+  return http.get('/spectrum/snapshots', {
+    params: { station_id: stationId, start_ms: startMs, end_ms: endMs, limit },
+  }).then(r => r.data)
+}
+
+/**
+ * Fetch a single spectrum frame (with data blob) by frame_id.
+ * @param {number} frameId
+ * @returns {Promise<{frame_id, levels_dbm_b64, freq_start_hz, freq_step_hz, num_points, ...}>}
+ */
+export function getSnapshot(frameId) {
+  return http.get(`/spectrum/snapshots/${frameId}`).then(r => r.data)
+}
+
+// ── Signal analysis (Phase 6) ─────────────────────────────────────────────
+
+/**
+ * Run signal detection on a spectrum frame or time range.
+ * @param {object} req  { station_id, frame_id?, freq_start_hz?, freq_stop_hz?,
+ *                        period_start_ms?, period_end_ms?, threshold_dbm,
+ *                        ai_backend?, ai_api_key? }
+ */
+export function runAnalysis(req) {
+  return http.post('/analysis', req, { timeout: 60_000 }).then(r => r.data)
+}
+
+/** @param {string} [stationId]  @param {number} [limit=100] */
+export function listAnalyses(stationId = null, limit = 100) {
+  return http.get('/analysis', {
+    params: { station_id: stationId || undefined, limit },
+  }).then(r => r.data)
+}
+
+/** @param {number} analysisId */
+export function getAnalysis(analysisId) {
+  return http.get(`/analysis/${analysisId}`).then(r => r.data)
+}
+
+/**
+ * Update analysis status.
+ * @param {number} analysisId
+ * @param {string} status  'confirmed' | 'dismissed' | 'new'
+ */
+export function updateAnalysisStatus(analysisId, status) {
+  return http.patch(`/analysis/${analysisId}`, { status }).then(r => r.data)
+}
+
+// ── Signal library (Phase 8) ──────────────────────────────────────────────
+
+/** @param {string} [status]  @param {number} [limit=200] */
+export function listSignals(status = null, limit = 200) {
+  return http.get('/signals', {
+    params: { status: status || undefined, limit },
+  }).then(r => r.data)
+}
+
+/**
+ * @param {object} record  { name, freq_center_hz, bandwidth_hz?, modulation?,
+ *                           service?, authority?, station_id?, notes?, ... }
+ */
+export function createSignal(record) {
+  return http.post('/signals', record).then(r => r.data)
+}
+
+/** @param {number} signalId  @param {object} updates */
+export function updateSignal(signalId, updates) {
+  return http.put(`/signals/${signalId}`, updates).then(r => r.data)
+}
+
+/** @param {number} signalId */
+export function archiveSignal(signalId) {
+  return http.patch(`/signals/${signalId}/archive`).then(r => r.data)
+}
+
+/** @param {number} signalId */
+export function deleteSignal(signalId) {
+  return http.delete(`/signals/${signalId}`).then(r => r.data)
+}

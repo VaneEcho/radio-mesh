@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from .. import db
 from ..models import (
     FreqStationSeries, FreqTimePoint, FreqTimeseriesResponse,
+    SnapshotDetail, SnapshotListResponse, SnapshotMeta,
     SpectrumQueryResponse, SpectrumRow,
 )
 
@@ -114,3 +115,41 @@ async def query_freq_timeseries(
         end_ms=end_ms,
         stations=station_series,
     )
+
+
+# ── Phase 7: Historical playback ──────────────────────────────────────────────
+
+@router.get("/snapshots", response_model=SnapshotListResponse)
+async def list_snapshots(
+    station_id: str = Query(...),
+    start_ms: int  = Query(...),
+    end_ms: int    = Query(...),
+    limit: int     = Query(1000, ge=1, le=5000),
+) -> SnapshotListResponse:
+    """
+    Return frame metadata (no data blob) for a station in the given window.
+    The playback UI uses this to build a timeline of available snapshots.
+    """
+    if end_ms <= start_ms:
+        raise HTTPException(422, "end_ms must be greater than start_ms")
+    loop = asyncio.get_running_loop()
+    rows = await loop.run_in_executor(
+        None, partial(db.list_snapshots, station_id, start_ms, end_ms, limit),
+    )
+    return SnapshotListResponse(
+        station_id=station_id,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        snapshots=[SnapshotMeta(**r) for r in rows],
+        total=len(rows),
+    )
+
+
+@router.get("/snapshots/{frame_id}", response_model=SnapshotDetail)
+async def get_snapshot(frame_id: int) -> SnapshotDetail:
+    """Return a single spectrum frame (with data blob) by frame_id."""
+    loop = asyncio.get_running_loop()
+    row = await loop.run_in_executor(None, partial(db.get_snapshot, frame_id))
+    if row is None:
+        raise HTTPException(404, f"Frame {frame_id} not found")
+    return SnapshotDetail(**row)
