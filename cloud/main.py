@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
-from .routers import band_rules, freq_assign, ingest, query, stations, tasks
+from .routers import band_rules, freq_assign, ingest, query, stations, stream, tasks
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +98,7 @@ app.include_router(band_rules.router)
 app.include_router(stations.router)
 app.include_router(tasks.router)
 app.include_router(freq_assign.router)
+app.include_router(stream.router)
 
 
 # ── Health / root ─────────────────────────────────────────────────────────────

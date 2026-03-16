@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from .. import db
 from ..connection_manager import manager
 from ..models import StationOut, StationRegisterAck, StationRegisterIn
+from ..stream_manager import stream_manager
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +132,12 @@ async def station_ws(websocket: WebSocket, station_id: str) -> None:
                     "WS task_progress: station=%s task=%s progress=%s%%",
                     station_id, msg.get("task_id"), msg.get("progress", "?"),
                 )
+
+            elif mtype == "stream_frame":
+                # Edge is pushing a live spectrum frame; relay to frontend subscribers
+                if stream_manager.subscriber_count(station_id) > 0:
+                    asyncio.ensure_future(stream_manager.broadcast(station_id, msg))
+                    log.debug("WS stream_frame relay: station=%s", station_id)
 
             else:
                 log.debug("WS unknown msg from %s: type=%s", station_id, mtype)

@@ -5,6 +5,7 @@ import BandRulesView  from '../views/BandRulesView.vue'
 import FreqQueryView  from '../views/FreqQueryView.vue'
 import FreqAssignView from '../views/FreqAssignView.vue'
 import TaskView       from '../views/TaskView.vue'
+import RealtimeView   from '../views/RealtimeView.vue'
 
 const routes = [
   { path: '/',                    component: StationsView,  name: 'stations'   },
@@ -13,6 +14,7 @@ const routes = [
   { path: '/freq-query',          component: FreqQueryView, name: 'freq-query' },
   { path: '/freq-assign',         component: FreqAssignView,name: 'freq-assign'},
   { path: '/tasks',               component: TaskView,      name: 'tasks'      },
+  { path: '/realtime',            component: RealtimeView,  name: 'realtime'   },
 ]
 
 export default createRouter({
