@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RF·MIND — 系统总览</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 14px;
+}
+
+.status-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(59,130,246,0.05));
+  border: 1px solid rgba(6,182,212,0.2);
+  border-radius: var(--radius-lg);
+}
+
+.banner-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.banner-val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.banner-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-subtle);
+}
+
+.banner-count {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  line-height: 1;
+}
+
+/* Stations grid */
+.stations-grid {
+  grid-column: 1 / 3;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.station-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  cursor: default;
+  transition: all var(--transition-fast);
+}
+
+.station-card:hover {
+  border-color: var(--border-normal);
+  background: var(--bg-hover);
+}
+
+.station-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.station-id {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
+
+.station-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.station-task {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.station-found {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.found-num {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.found-label {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* Status indicator */
+.sta-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.sta-dot { width: 5px; height: 5px; border-radius: 50%; }
+.sta-dot.scanning { background: var(--accent-green); box-shadow: 0 0 5px var(--accent-green); animation: blink 3s ease-in-out infinite; }
+.sta-dot.dfing    { background: var(--accent-cyan);  box-shadow: 0 0 5px var(--accent-cyan);  animation: blink 2s ease-in-out infinite; }
+.sta-dot.tasked   { background: var(--accent-amber); box-shadow: 0 0 5px var(--accent-amber); }
+
+/* Right column */
+.right-col {
+  grid-column: 3;
+  grid-row: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Signal stats */
+.signal-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+}
+
+.stat-box {
+  padding: 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Alert list */
+.alert-list { padding: 0 12px 12px; }
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.alert-item:last-child { border-bottom: none; }
+.alert-item:hover { opacity: 0.8; }
+
+.alert-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.alert-icon.high { background: rgba(239,68,68,0.15); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
+
+.alert-body { flex: 1; min-width: 0; }
+.alert-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.alert-meta  { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+
+/* AI Queue */
+.ai-queue { padding: 0 12px 12px; }
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  background: var(--bg-elevated);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  opacity: 0;
+  animation: fade-in 0.5s ease forwards;
+}
+
+.queue-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-normal);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Daily summary */
+.summary-text {
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  padding: 14px 16px;
+}
+
+.summary-text .hl { color: var(--accent-cyan); font-family: var(--font-mono); font-weight: 500; }
+.summary-text .warn { color: var(--accent-amber); font-weight: 500; }
+
+/* Bottom row */
+.bottom-row {
+  grid-column: 1 / 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Tour button */
+.tour-launch {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan));
+  color: white;
+  border: none;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 32px rgba(59,130,246,0.4);
+  transition: all var(--transition-normal);
+  z-index: 800;
+  letter-spacing: 0.02em;
+}
+
+.tour-launch:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(59,130,246,0.5);
+}
+
+.tour-launch svg { width: 16px; height: 16px; }
+
+/* Pulse ring */
+.tour-launch::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 100px;
+  border: 2px solid rgba(59,130,246,0.4);
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+</style>
+</head>
+<body>
+
+<nav id="nav"></nav>
+
+<!-- Tour overlay -->
+<div id="tour-overlay">
+  <div id="tour-tooltip"></div>
+</div>
+
+<main class="page">
+  <div class="overview-grid">
+
+    <!-- Status banner -->
+    <div class="status-banner" id="status-banner">
+      <div class="banner-item">
+        <div class="banner-label">系统状态</div>
+        <div class="banner-val" style="color:var(--accent-green)">● 运行中</div>
+      </div>
+      <div class="banner-sep"></div>
+      <div class="banner-item">
+        <div class="banner-label">扫描范围</div>
+        <div class="banner-val">20 MHz — 8 GHz</div>
+      </div>
+      <div class="banner-sep"></div>
+      <div class="banner-item">
+        <div class="banner-label">在线站点</div>
+        <div class="banner-val">10 / 10</div>
+      </div>
+      <div class="banner-sep"></div>
+      <div class="banner-item">
+        <div class="banner-label">今日累计分析</div>
+        <div class="banner-count" id="total-count">0</div>
+      </div>
+      <div class="banner-sep"></div>
+      <div class="banner-item">
+        <div class="banner-label">AI研判任务</div>
+        <div class="banner-val"><span id="ai-tasks-count">0</span> 进行中</div>
+      </div>
+      <div class="banner-sep"></div>
+      <div class="banner-item">
+        <div class="banner-label">活跃告警</div>
+        <div class="banner-val" style="color:var(--accent-red)">3 条待处理</div>
+      </div>
+    </div>
+
+    <!-- Stations grid -->
+    <div class="stations-grid" id="stations-grid">
+      <!-- Injected by JS -->
+    </div>
+
+    <!-- Right column -->
+    <div class="right-col">
+
+      <!-- Signal stats -->
+      <div class="card" id="signal-stats-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="7" cy="7" r="2.5"/><circle cx="7" cy="7" r="6" stroke-dasharray="2 2"/>
+            </svg>
+            信号库统计
+          </div>
+        </div>
+        <div class="signal-stats">
+          <div class="stat-box">
+            <div class="stat-num" style="color:var(--accent-cyan)">342</div>
+            <div class="stat-label">已知信号</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" style="color:var(--accent-amber)">17</div>
+            <div class="stat-label">未知待定性</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" style="color:var(--accent-green)">+8</div>
+            <div class="stat-label">本周新增</div>
+          </div>
+          <div class="stat-box" style="border-color:rgba(239,68,68,0.25)">
+            <div class="stat-num" style="color:var(--accent-red)">3</div>
+            <div class="stat-label">异常告警</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active alerts -->
+      <div class="card" id="alerts-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M7 1L1 12h12L7 1z"/><line x1="7" y1="5" x2="7" y2="8"/><circle cx="7" cy="10.5" r="0.5" fill="currentColor"/>
+            </svg>
+            活跃告警
+          </div>
+          <span class="badge badge-red">3 条</span>
+        </div>
+        <div class="alert-list" id="alert-list"></div>
+      </div>
+
+    </div>
+
+    <!-- Bottom row left: AI queue -->
+    <div class="bottom-row">
+      <div class="card" id="ai-queue-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="1" y="3" width="12" height="8" rx="1.5"/>
+              <path d="M4 7h6M4 9.5h4"/>
+            </svg>
+            AI后台任务队列
+          </div>
+          <span class="badge badge-cyan" id="queue-badge">实时</span>
+        </div>
+        <div class="ai-queue" id="ai-queue"></div>
+      </div>
+
+      <!-- Daily summary -->
+      <div class="card" id="summary-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 3h10M2 6h7M2 9h8M2 12h5"/>
+            </svg>
+            AI每日电磁态势摘要
+          </div>
+          <span class="badge badge-gray">自动生成 08:00</span>
+        </div>
+        <div class="summary-text">
+          截至今日 <span class="hl">18:00</span>，辖区电磁环境整体稳定，10个监测站持续运行，今日累计分析信号
+          <span class="hl">2,847</span> 次。
+          <span class="warn">当前存在3条活跃告警</span>，其中
+          <span class="warn">97.4 MHz</span> 黑广播信号已定位，测向精度 ±120 m，正协调处置；
+          <span class="warn">1575.42 MHz GPS L1</span> 频段干扰事件持续中，6站联合测向已交叉定位，建议尽快介入；
+          <span class="warn">118.1 MHz</span> 航空VHF干扰已排查至东南方向，疑似工业设备谐波辐射。
+          其余频段信号活动符合正常规律，<span class="hl">5G NR n78</span>、<span class="hl">WiFi 2.4/5G</span>、
+          <span class="hl">LoRa IoT</span> 网关周期信号均已归档入库。
+          未知信号 <span class="hl">SIG-008</span>（351.225 MHz）仍处于持续观测阶段，特征积累中。
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Tour launch button -->
+<button class="tour-launch" id="tour-btn" onclick="startTour()">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+    <circle cx="8" cy="8" r="7"/>
+    <path d="M6 5.5C6 4.7 7 4 8 4c1.2 0 2 .7 2 1.5 0 1.5-2 1.5-2 3"/>
+    <circle cx="8" cy="11.5" r="0.6" fill="currentColor"/>
+  </svg>
+  开始演示导览
+</button>
+
+<script src="assets/common.js"></script>
+<script>
+// ── Render stations ───────────────────────────────────────────
+function renderStations() {
+  const container = document.getElementById('stations-grid');
+  const statusMap = { scanning:'扫描中', dfing:'测向中', tasked:'执行任务' };
+  const dotClass  = { scanning:'scanning', dfing:'dfing', tasked:'tasked' };
+  const colorMap  = { scanning:'var(--accent-green)', dfing:'var(--accent-cyan)', tasked:'var(--accent-amber)' };
+
+  container.innerHTML = STATIONS.map((s, i) => `
+    <div class="station-card" id="st-${s.id}" style="animation:fade-in 0.4s ease ${i*0.05}s both">
+      <div class="station-header">
+        <span class="station-id">${s.short}</span>
+        <div class="sta-status" style="color:${colorMap[s.status]}">
+          <div class="sta-dot ${dotClass[s.status]}"></div>
+          ${statusMap[s.status]}
+        </div>
+      </div>
+      <div class="station-name">${s.name}</div>
+      <div class="station-task">${s.tasks[0]}</div>
+      <div class="station-found">
+        <div class="found-num">${s.found}</div>
+        <div class="found-label">今日发现</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Render alerts ─────────────────────────────────────────────
+function renderAlerts() {
+  const icons = { '黑广播':'📻', 'GNSS干扰':'📡', '航空VHF干扰':'✈️' };
+  document.getElementById('alert-list').innerHTML = ALERTS.map(a => `
+    <div class="alert-item" onclick="window.location.href='signals.html'">
+      <div class="alert-icon high">${icons[a.type] || '⚠'}</div>
+      <div class="alert-body">
+        <div class="alert-title">${a.type} — <span class="highlight-freq">${a.freq}</span></div>
+        <div class="alert-meta">${a.time} · <span style="color:${a.status==='处理中'?'var(--accent-amber)':'var(--accent-red)'}">● ${a.status}</span></div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--text-dim)" stroke-width="1.5">
+        <path d="M5 2l5 5-5 5"/>
+      </svg>
+    </div>
+  `).join('');
+}
+
+// ── AI Task queue ─────────────────────────────────────────────
+let queueItems = [];
+function updateAIQueue() {
+  const container = document.getElementById('ai-queue');
+  // Pick 4 random tasks
+  const pool = [...AI_TASK_TEMPLATES];
+  const selected = [];
+  while (selected.length < 4 && pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    selected.push(pool.splice(idx, 1)[0]);
+  }
+
+  container.innerHTML = selected.map((t, i) => `
+    <div class="queue-item" style="animation-delay:${i*0.1}s">
+      <div class="queue-spinner"></div>
+      <span>${t}</span>
+    </div>
+  `).join('');
+
+  document.getElementById('ai-tasks-count').textContent = 4;
+}
+
+// ── Animate total count ───────────────────────────────────────
+function animateTotalCount() {
+  const el = document.getElementById('total-count');
+  animateCount(el, 2847, 2000);
+  // Slowly increment
+  setInterval(() => {
+    const cur = parseInt(el.textContent.replace(/,/g, '')) || 2847;
+    el.textContent = (cur + Math.floor(Math.random() * 3 + 1)).toLocaleString();
+  }, 4000);
+}
+
+// ── Tour steps ────────────────────────────────────────────────
+let tour;
+
+function startTour() {
+  const steps = [
+    {
+      target: '#status-banner',
+      title: '系统运行状态栏',
+      body: '顶部状态栏实时显示系统全局运行状态：10个监测站全部在线，AI实时处理信号，今日累计分析数量动态递增。扫描范围覆盖 20 MHz 至 8 GHz 全频段。',
+      action: null
+    },
+    {
+      target: '#stations-grid',
+      title: '10个监测站状态',
+      body: '辖区10个固定监测站点网格化展示。绿色代表持续扫描，青色为测向作业，黄色为执行专项任务。每站独立显示今日信号发现数量，具备空间谱测向能力。',
+      action: null
+    },
+    {
+      target: '#signal-stats-card',
+      title: '信号库统计概览',
+      body: '信号库当前收录342个已知信号，17个未知待定性信号。红色告警框标注3条活跃异常——这正是系统的核心产出：从海量信号中精准识别威胁。',
+      action: null
+    },
+    {
+      target: '#alerts-card',
+      title: '活跃告警列表',
+      body: '3条高优先级告警：97.4 MHz黑广播、GPS L1干扰、航空VHF干扰。点击任意告警可跳转至信号库查看完整分析链路，包括测向定位与AI研判结论。',
+      action: null
+    },
+    {
+      target: '#ai-queue-card',
+      title: 'AI后台任务队列',
+      body: 'AI引擎持续在后台运行多条分析任务：测向数据融合、信号解调、特征比对、报告生成……系统自主运转，无需人工干预逐条处理。',
+      action: null
+    },
+    {
+      target: '#summary-card',
+      title: 'AI每日态势摘要',
+      body: 'AI在每日8:00自动生成全频段电磁态势日报，自然语言描述辖区整体情况，关键频率和异常均高亮标注。这相当于系统的"每日简报"，为研判人员提供快速感知。',
+      action: null
+    },
+    {
+      target: null,
+      title: '接下来：看频谱与测向地图',
+      body: '总览页展示了系统的全局态势感知能力。接下来点击顶部导航 →「02 频谱态势」，看看系统如何从原始频谱数据中发现信号、测向定位，以及处理同频多源这类复杂场景。',
+      action: null
+    },
+  ];
+
+  tour = new TourGuide(steps);
+  tour.start();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderStations();
+renderAlerts();
+updateAIQueue();
+animateTotalCount();
+setInterval(updateAIQueue, 8000);
+</script>
+</body>
+</html>

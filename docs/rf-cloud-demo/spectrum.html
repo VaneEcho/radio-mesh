@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RF·MIND — 频谱态势</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+.spectrum-layout {
+  display: grid;
+  grid-template-columns: 60% 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  height: calc(100vh - var(--nav-height) - 40px);
+}
+
+/* Left: spectrum panels */
+.spectrum-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.canvas-wrap {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+#canvas-overview {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+}
+
+.freq-label {
+  position: absolute;
+  bottom: 4px;
+  left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px;
+  pointer-events: none;
+}
+
+.freq-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.canvas-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.freq-hover {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-cyan);
+  min-width: 140px;
+  text-align: right;
+}
+
+/* Waterfall */
+#canvas-waterfall {
+  display: block;
+  width: 100%;
+  image-rendering: pixelated;
+}
+
+/* Signal detail panel */
+.signal-detail {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Right: map */
+.map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+#main-map {
+  flex: 1;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.map-status-bar {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-status-bar .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+/* Signal selector tabs */
+.signal-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sig-tab {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  background: transparent;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.sig-tab:hover { border-color: var(--border-bright); color: var(--text-secondary); }
+.sig-tab.active { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.4); color: var(--accent-cyan); }
+.sig-tab.alert  { border-color: rgba(239,68,68,0.3); color: var(--accent-red); }
+.sig-tab.alert.active { background: rgba(239,68,68,0.1); }
+
+/* Detail card content */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-field { }
+.detail-field-label { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 3px; }
+.detail-field-value { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); font-weight: 500; }
+
+.ai-box {
+  margin: 14px;
+  padding: 12px;
+  background: rgba(59,130,246,0.05);
+  border: 1px solid rgba(59,130,246,0.15);
+  border-radius: var(--radius-md);
+}
+
+.ai-box-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ai-box-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.history-chart {
+  margin: 0 14px 14px;
+}
+
+.h-chart-label { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.h-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+}
+
+.h-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent-cyan);
+  opacity: 0.5;
+  min-height: 3px;
+  transition: opacity var(--transition-fast);
+}
+
+.h-bar:hover { opacity: 1; }
+
+/* Zoom instruction */
+.zoom-hint {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  background: rgba(13,17,23,0.7);
+  padding: 3px 7px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* Multi-source badge */
+.multi-source-badge {
+  position: absolute;
+  z-index: 1000;
+  background: rgba(245,158,11,0.15);
+  border: 1px solid rgba(245,158,11,0.4);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--accent-amber);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<nav id="nav"></nav>
+<div id="tour-overlay"><div id="tour-tooltip"></div></div>
+
+<main class="page" style="padding-bottom:10px">
+<div class="spectrum-layout">
+
+  <!-- Left column -->
+  <div class="spectrum-col">
+
+    <!-- Overview canvas -->
+    <div class="canvas-wrap" id="overview-card">
+      <div class="canvas-header">
+        <span class="canvas-title">全频段概览 &nbsp;20 MHz — 8 GHz</span>
+        <span class="freq-hover" id="freq-hover">鼠标悬停查看频率</span>
+      </div>
+      <canvas id="canvas-overview" height="90"></canvas>
+      <div class="freq-label">
+        <span class="freq-lbl">20M</span>
+        <span class="freq-lbl">500M</span>
+        <span class="freq-lbl">1G</span>
+        <span class="freq-lbl">2G</span>
+        <span class="freq-lbl">3G</span>
+        <span class="freq-lbl">5G</span>
+        <span class="freq-lbl">8G</span>
+      </div>
+      <span class="zoom-hint">点击频段区域进入瀑布图</span>
+    </div>
+
+    <!-- Waterfall -->
+    <div class="canvas-wrap" id="waterfall-card">
+      <div class="canvas-header">
+        <span class="canvas-title" id="wf-title">瀑布图 — 点击上方频谱选择频段</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-cyan" id="wf-range"></span>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px" onclick="resetWaterfall()">↩ 复位</button>
+        </div>
+      </div>
+      <canvas id="canvas-waterfall" height="160"></canvas>
+    </div>
+
+    <!-- Signal tabs + detail -->
+    <div class="card signal-detail" id="signal-detail-card">
+      <div class="signal-tabs" id="signal-tabs">
+        <span class="sig-tab" style="color:var(--text-dim);pointer-events:none;font-size:9px">常用频点：</span>
+      </div>
+      <div id="signal-detail-body">
+        <div style="padding:24px;text-align:center;color:var(--text-dim);font-size:12px">
+          点击频谱区域或上方标签查看信号详情
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right column: map -->
+  <div class="map-col">
+    <div class="card-header" style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:10px 14px;margin-bottom:0">
+      <div class="card-title">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6.5 1C4 1 2 3 2 5.5c0 3.5 4.5 6.5 4.5 6.5s4.5-3 4.5-6.5C11 3 9 1 6.5 1z"/>
+          <circle cx="6.5" cy="5.5" r="1.5"/>
+        </svg>
+        测向地图
+      </div>
+      <span class="badge badge-green" id="df-station-count">10站在线</span>
+    </div>
+    <div id="main-map"></div>
+    <div class="map-status-bar" id="map-status">
+      <div class="dot"></div>
+      <span id="map-status-text">选择信号后显示测向结果</span>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────
+let selectedSignal = null;
+let selectedBand = null;
+let map = null;
+let stationMarkers = [];
+let dfLines = [];
+let locationCircles = [];
+let animFrame = null;
+let wfOffset = 0;
+let wfBand = { start: 80, end: 110 }; // MHz default
+
+// ── Colors ────────────────────────────────────────────────────
+const SPECTRAL = [
+  [13,17,30],   // very low - near black
+  [15,30,80],   // low - dark blue
+  [10,80,120],  // medium-low - teal blue
+  [0,140,140],  // medium - cyan
+  [20,180,80],  // medium-high - green
+  [180,180,0],  // high - yellow
+  [220,100,0],  // very high - orange
+  [240,30,30],  // peak - red
+];
+
+function spectralColor(v, alpha=1) {
+  v = Math.max(0, Math.min(1, v));
+  const n = SPECTRAL.length - 1;
+  const i = Math.floor(v * n);
+  const t = v * n - i;
+  const a = SPECTRAL[Math.min(i, n)];
+  const b = SPECTRAL[Math.min(i+1, n)];
+  const r = Math.round(a[0] + (b[0]-a[0])*t);
+  const g = Math.round(a[1] + (b[1]-a[1])*t);
+  const bl = Math.round(a[2] + (b[2]-a[2])*t);
+  return `rgba(${r},${g},${bl},${alpha})`;
+}
+
+// ── Overview canvas ───────────────────────────────────────────
+const rng = seededRandom(42);
+function buildSpectrumData(w) {
+  const data = new Float32Array(w);
+  // Base noise floor
+  for (let i = 0; i < w; i++) data[i] = rng() * 0.12 + 0.02;
+
+  // Add signals
+  const signals = [
+    { f: 0.010, bw: 0.004, amp: 0.72 }, // FM broadcast 97.4
+    { f: 0.012, bw: 0.002, amp: 0.55 }, // FM band
+    { f: 0.013, bw: 0.002, amp: 0.48 },
+    { f: 0.014, bw: 0.003, amp: 0.60 }, // FM 118
+    { f: 0.017, bw: 0.003, amp: 0.45 }, // VHF
+    { f: 0.022, bw: 0.002, amp: 0.38 }, // 162 MHz
+    { f: 0.045, bw: 0.003, amp: 0.44 }, // 351 MHz
+    { f: 0.049, bw: 0.002, amp: 0.62 }, // 433
+    { f: 0.062, bw: 0.005, amp: 0.55 }, // 460 DMR
+    { f: 0.090, bw: 0.010, amp: 0.70 }, // 700 MHz 4G
+    { f: 0.110, bw: 0.020, amp: 0.82 }, // 900 MHz 2G/4G
+    { f: 0.140, bw: 0.008, amp: 0.65 }, // 1.1G GPS
+    { f: 0.198, bw: 0.005, amp: 0.95, alert:true }, // GPS L1 1575 with interference
+    { f: 0.215, bw: 0.018, amp: 0.74 }, // 1.7G 4G
+    { f: 0.305, bw: 0.025, amp: 0.88 }, // 2.4G WiFi
+    { f: 0.350, bw: 0.015, amp: 0.78 }, // 2.6G 4G
+    { f: 0.415, bw: 0.020, amp: 0.85 }, // 3.5G 5G
+    { f: 0.608, bw: 0.015, amp: 0.80 }, // 4.9G 5G
+    { f: 0.650, bw: 0.055, amp: 0.92 }, // 5G WiFi
+  ];
+
+  for (const s of signals) {
+    const center = Math.floor(s.f * w);
+    const halfBw  = Math.floor(s.bw * w / 2);
+    for (let j = -halfBw*3; j <= halfBw*3; j++) {
+      const x = center + j;
+      if (x < 0 || x >= w) continue;
+      const dist = Math.abs(j) / halfBw;
+      const envelope = Math.exp(-dist*dist * 2);
+      data[x] = Math.max(data[x], s.amp * envelope + rng()*0.05);
+    }
+  }
+  return data;
+}
+
+let specData = null;
+function drawOverview() {
+  const canvas = document.getElementById('canvas-overview');
+  const W = canvas.parentElement.clientWidth;
+  canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  specData = buildSpectrumData(W);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw spectrum
+  for (let x = 0; x < W; x++) {
+    const v = specData[x];
+    const barH = v * (H - 16);
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, H-16-barH, 0, H-16);
+    grad.addColorStop(0, spectralColor(v, 0.9));
+    grad.addColorStop(1, spectralColor(v * 0.3, 0.3));
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, H-16-barH, 1, barH);
+  }
+
+  // Band divisions
+  const TOTAL_MHZ = 8000 - 20;
+  const bandDivs = [88, 108, 137, 174, 380, 512, 694, 960, 1215, 1610, 2200, 2500, 3600, 5000, 5850];
+  ctx.strokeStyle = 'rgba(148,163,184,0.12)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2,3]);
+  for (const f of bandDivs) {
+    const x = Math.round(((f - 20) / TOTAL_MHZ) * W);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H-14); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Signal markers (known signals)
+  const sigMarkers = [
+    { freq: 97.4,    label:'97.4M ⚠', color:'#ef4444' },
+    { freq: 118.1,   label:'118.1M ⚠', color:'#ef4444' },
+    { freq: 460.325, label:'460M DMR', color:'#06b6d4' },
+    { freq: 1575.42, label:'GPS L1 ⚠', color:'#ef4444' },
+    { freq: 2450,    label:'2.4G WiFi', color:'#3b82f6' },
+    { freq: 3500,    label:'5G n78', color:'#3b82f6' },
+  ];
+  ctx.font = '8.5px IBM Plex Mono, monospace';
+  for (const m of sigMarkers) {
+    const x = Math.round(((m.freq - 20) / TOTAL_MHZ) * W);
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, H-16); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = m.color;
+    ctx.fillText(m.label, Math.min(x+2, W-50), 12);
+  }
+}
+
+// ── Hover on overview ─────────────────────────────────────────
+function setupOverviewHover() {
+  const canvas = document.getElementById('canvas-overview');
+  const TOTAL_MHZ = 8000 - 20;
+  const freqLabel = document.getElementById('freq-hover');
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const freq = 20 + (x / canvas.width) * TOTAL_MHZ;
+    const band = FREQ_BANDS.find(b => freq >= b.start*1 && freq <= b.end*1);
+
+    let freqStr;
+    if (freq >= 1000) freqStr = (freq/1000).toFixed(3) + ' GHz';
+    else freqStr = freq.toFixed(1) + ' MHz';
+    freqLabel.textContent = freqStr + (band ? ` — ${band.label}` : '');
+  });
+
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const freq = 20 + (x / canvas.width) * TOTAL_MHZ;
+    // Find nearest signal
+    let nearest = null, minDist = 1e9;
+    for (const s of SIGNALS) {
+      const d = Math.abs(s.freq - freq);
+      if (d < minDist) { minDist = d; nearest = s; }
+    }
+    if (nearest) selectSignal(nearest.id);
+    // Also update waterfall
+    const center = freq;
+    const span = Math.max(20, freq * 0.02);
+    selectBand(Math.max(20, center - span), center + span);
+  });
+}
+
+// ── Waterfall ─────────────────────────────────────────────────
+const WF_ROWS = 80;
+let wfData = [];
+
+function initWaterfall(startMHz, endMHz) {
+  wfBand = { start: startMHz, end: endMHz };
+  wfData = [];
+  const canvas = document.getElementById('canvas-waterfall');
+  canvas.width = canvas.parentElement.clientWidth;
+  // Fill initial rows
+  for (let r = 0; r < WF_ROWS; r++) {
+    wfData.push(generateWFRow(canvas.width, startMHz, endMHz, r * 2));
+  }
+}
+
+function generateWFRow(W, startMHz, endMHz, timeOffset = 0) {
+  const row = new Float32Array(W);
+  const rng2 = seededRandom(timeOffset * 7 + 13);
+  for (let i = 0; i < W; i++) row[i] = rng2() * 0.10 + 0.03;
+
+  // Inject signals in this band
+  for (const s of SIGNALS) {
+    if (s.freq < startMHz || s.freq > endMHz) continue;
+    const x = Math.round(((s.freq - startMHz) / (endMHz - startMHz)) * W);
+    const bwPx = Math.max(2, Math.round((s.bw / 1000 / (endMHz - startMHz)) * W));
+    const amp  = 0.45 + rng2() * 0.2;
+    const isAlert = s.status === 'alert';
+    for (let j = -bwPx*3; j <= bwPx*3; j++) {
+      const xi = x + j;
+      if (xi < 0 || xi >= W) continue;
+      const env = Math.exp(-(j*j)/(bwPx*bwPx));
+      row[xi] = Math.max(row[xi], (isAlert ? amp*1.3 : amp) * env);
+    }
+  }
+  return row;
+}
+
+function drawWaterfall() {
+  const canvas = document.getElementById('canvas-waterfall');
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const rowH = H / WF_ROWS;
+
+  // Add new row at top
+  wfData.unshift(generateWFRow(W, wfBand.start, wfBand.end, Date.now() * 0.001));
+  if (wfData.length > WF_ROWS) wfData.pop();
+
+  // Draw all rows
+  for (let r = 0; r < wfData.length; r++) {
+    const row = wfData[r];
+    const y = r * rowH;
+    for (let x = 0; x < W; x++) {
+      ctx.fillStyle = spectralColor(row[x]);
+      ctx.fillRect(x, y, 1, Math.ceil(rowH));
+    }
+  }
+
+  // Time axis labels
+  ctx.fillStyle = 'rgba(100,116,139,0.8)';
+  ctx.font = '8px IBM Plex Mono, monospace';
+  const now = new Date();
+  for (let t = 0; t <= 4; t++) {
+    const mins = -30 + t * 7.5;
+    const d = new Date(now.getTime() + mins * 60000);
+    const label = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    const y = Math.round((t / 4) * H);
+    ctx.fillText(label, 3, y > 10 ? y - 2 : 10);
+  }
+
+  animFrame = requestAnimationFrame(drawWaterfall);
+}
+
+function selectBand(start, end) {
+  cancelAnimationFrame(animFrame);
+  initWaterfall(start, end);
+  const rangeStr = start >= 1000
+    ? `${(start/1000).toFixed(2)}–${(end/1000).toFixed(2)} GHz`
+    : `${start.toFixed(1)}–${end.toFixed(1)} MHz`;
+  document.getElementById('wf-title').textContent = `瀑布图 — ${rangeStr}`;
+  document.getElementById('wf-range').textContent = rangeStr;
+  drawWaterfall();
+}
+
+function resetWaterfall() {
+  selectBand(80, 110);
+}
+
+// ── Signal tabs ───────────────────────────────────────────────
+function buildSignalTabs() {
+  const container = document.getElementById('signal-tabs');
+  const tabSignals = SIGNALS.filter(s => ['SIG-001','SIG-003','SIG-004','SIG-007','SIG-008','SIG-010'].includes(s.id));
+  const hints = document.createElement('span');
+  hints.className = 'sig-tab';
+  hints.style.cssText = 'color:var(--text-dim);pointer-events:none;font-size:9px';
+  hints.textContent = '快速选择：';
+  container.innerHTML = '';
+  container.appendChild(hints);
+
+  for (const s of tabSignals) {
+    const tab = document.createElement('button');
+    tab.className = 'sig-tab' + (s.status === 'alert' ? ' alert' : '');
+    tab.textContent = s.freqStr;
+    tab.id = 'tab-' + s.id;
+    tab.onclick = () => selectSignal(s.id);
+    container.appendChild(tab);
+  }
+}
+
+// ── Select signal ─────────────────────────────────────────────
+function selectSignal(sigId) {
+  selectedSignal = SIGNALS.find(s => s.id === sigId);
+  if (!selectedSignal) return;
+
+  // Update tabs
+  document.querySelectorAll('.sig-tab').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById('tab-' + sigId);
+  if (tab) tab.classList.add('active');
+
+  // Update waterfall band
+  const f = selectedSignal.freq;
+  const span = Math.max(5, f * 0.01, selectedSignal.bw / 500);
+  selectBand(Math.max(20, f - span * 3), f + span * 3);
+
+  // Render detail
+  renderSignalDetail(selectedSignal);
+
+  // Update map
+  updateMap(selectedSignal);
+}
+
+// ── Signal detail ─────────────────────────────────────────────
+function renderSignalDetail(sig) {
+  const modColor = sig.status === 'alert' ? 'var(--accent-red)' :
+                   sig.status === 'unknown' ? 'var(--accent-amber)' : 'var(--accent-cyan)';
+  const statusBadge = sig.status === 'alert'   ? '<span class="badge badge-red">告警</span>' :
+                      sig.status === 'unknown' ? '<span class="badge badge-amber">待定性</span>' :
+                                                 '<span class="badge badge-green">已知</span>';
+
+  // History bars (7 days)
+  const barHeights = Array.from({length:7}, () => Math.floor(Math.random()*70 + 15));
+  const bars = barHeights.map(h => `<div class="h-bar" style="height:${h}%"></div>`).join('');
+  const days = ['周一','周二','周三','周四','周五','周六','周日'];
+
+  document.getElementById('signal-detail-body').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-field">
+        <div class="detail-field-label">中心频率</div>
+        <div class="detail-field-value" style="color:${modColor}">${sig.freqStr}</div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-field-label">信道带宽</div>
+        <div class="detail-field-value">${sig.bw >= 1000 ? (sig.bw/1000)+'MHz' : sig.bw+'kHz'}</div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-field-label">调制方式</div>
+        <div class="detail-field-value">${sig.mod}</div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-field-label">信号类型</div>
+        <div class="detail-field-value" style="font-size:11px">${sig.type}</div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-field-label">出现次数</div>
+        <div class="detail-field-value">${sig.count.toLocaleString()}</div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-field-label">定性状态</div>
+        <div style="margin-top:2px">${statusBadge}</div>
+      </div>
+    </div>
+    <div class="ai-box">
+      <div class="ai-box-label">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="1" y="1" width="8" height="8" rx="1.5"/>
+          <path d="M3 5h4M3 7h2.5"/>
+        </svg>
+        AI 分析结论 &nbsp;·&nbsp; 置信度 ${sig.confidence}%
+      </div>
+      <div class="ai-box-text">${sig.aiConclusion}</div>
+    </div>
+    <div class="history-chart">
+      <div class="h-chart-label">近7日出现频次</div>
+      <div class="h-chart-bars">${bars}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px">
+        ${days.map(d=>`<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);flex:1;text-align:center">${d}</span>`).join('')}
+      </div>
+    </div>
+    <div style="padding:0 14px 12px;display:flex;gap:8px">
+      <a href="signals.html" class="btn btn-primary" style="font-size:11px;padding:6px 12px">→ 信号库详情</a>
+      ${sig.status==='alert' ? `<span class="badge badge-red" style="align-self:center">⚠ 告警信号</span>` : ''}
+    </div>
+  `;
+}
+
+// ── Map ───────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('main-map', {
+    center: [39.87, 116.38],
+    zoom: 11,
+    zoomControl: true,
+  });
+
+  // Try tile layer
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const tiles = L.tileLayer(tileUrl, {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18,
+  });
+  tiles.addTo(map);
+
+  // Custom station icon
+  STATIONS.forEach(s => {
+    const color = s.status === 'dfing' ? '#06b6d4' : s.status === 'tasked' ? '#f59e0b' : '#10b981';
+    const icon = L.divIcon({
+      html: `<div style="
+        width:24px;height:24px;border-radius:50%;
+        background:${color}22;
+        border:1.5px solid ${color};
+        display:flex;align-items:center;justify-content:center;
+        font-family:'IBM Plex Mono',monospace;font-size:7px;font-weight:600;
+        color:${color};
+        box-shadow:0 0 10px ${color}55;
+      ">${s.short.split('-')[0]}</div>`,
+      iconSize: [24,24],
+      iconAnchor: [12,12],
+      className: '',
+    });
+    const marker = L.marker([s.lat, s.lng], {icon}).addTo(map);
+    marker.bindPopup(`
+      <strong style="color:#e2e8f0">${s.name}</strong><br>
+      <span style="color:#94a3b8;font-size:11px">${s.short} &nbsp;·&nbsp; ${s.tasks[0]}</span><br>
+      <span style="color:#10b981;font-size:11px">今日发现：${s.found}条</span>
+    `);
+    stationMarkers.push(marker);
+  });
+}
+
+function clearDFLines() {
+  dfLines.forEach(l => map.removeLayer(l));
+  locationCircles.forEach(c => map.removeLayer(c));
+  dfLines = [];
+  locationCircles = [];
+}
+
+function updateMap(sig) {
+  clearDFLines();
+
+  const activeStations = STATIONS.filter(s => sig.stations.includes(s.id));
+
+  // Update status bar
+  const isMulti = sig.id === 'SIG-003'; // GPS interference - multi-source demo
+  document.getElementById('map-status-text').textContent =
+    `已选中：${sig.freqStr} — ${sig.label} · ${activeStations.length}个站点参与测向`;
+
+  // Draw DF lines
+  activeStations.forEach(s => {
+    const bearing = sig.bearing[s.id] || 0;
+    const endPt = computeEndpoint(s.lat, s.lng, bearing, 0.12);
+    const line = L.polyline([[s.lat, s.lng], endPt], {
+      color: sig.status === 'alert' ? '#ef4444' : '#06b6d4',
+      weight: 1.5,
+      opacity: 0.75,
+      dashArray: '6 4',
+    }).addTo(map);
+    dfLines.push(line);
+  });
+
+  // Location estimate circle(s)
+  if (sig.emitLoc) {
+    const circle = L.circle([sig.emitLoc.lat, sig.emitLoc.lng], {
+      radius: 120,
+      color: sig.status === 'alert' ? '#ef4444' : '#06b6d4',
+      fillColor: sig.status === 'alert' ? '#ef444433' : '#06b6d433',
+      fillOpacity: 0.3,
+      weight: 2,
+    }).addTo(map);
+    circle.bindPopup(`
+      <strong style="color:#e2e8f0">估计发射位置</strong><br>
+      <span style="color:#94a3b8;font-size:11px">${sig.freqStr} — ${sig.label}</span><br>
+      <span style="color:#06b6d4;font-size:11px">CEP 120 m</span>
+    `);
+    locationCircles.push(circle);
+
+    if (isMulti) {
+      // Second source
+      const loc2 = {lat: sig.emitLoc.lat + 0.025, lng: sig.emitLoc.lng - 0.018};
+      const circle2 = L.circle([loc2.lat, loc2.lng], {
+        radius: 150, color: '#f59e0b', fillColor: '#f59e0b33', fillOpacity: 0.3, weight: 2,
+      }).addTo(map);
+      circle2.bindPopup(`
+        <strong style="color:#e2e8f0">第二发射源（空间谱检测）</strong><br>
+        <span style="color:#f59e0b;font-size:11px">空间谱测向：检测到2个同频发射源</span>
+      `);
+      locationCircles.push(circle2);
+
+      // Second set of DF lines
+      const stations2 = STATIONS.filter(s => [1,2,8].includes(s.id));
+      stations2.forEach(s => {
+        const bearing2 = ((sig.bearing[s.id] || 0) + 35) % 360;
+        const endPt2 = computeEndpoint(s.lat, s.lng, bearing2, 0.10);
+        const line2 = L.polyline([[s.lat, s.lng], endPt2], {
+          color: '#f59e0b', weight: 1.5, opacity: 0.65, dashArray: '4 4',
+        }).addTo(map);
+        dfLines.push(line2);
+      });
+    }
+  }
+
+  // Fit map to show all active stations + location
+  const pts = activeStations.map(s => [s.lat, s.lng]);
+  if (sig.emitLoc) pts.push([sig.emitLoc.lat, sig.emitLoc.lng]);
+  if (pts.length > 0) {
+    map.fitBounds(L.latLngBounds(pts).pad(0.15), {animate: true, duration: 0.8});
+  }
+}
+
+function computeEndpoint(lat, lng, bearingDeg, distDeg) {
+  const rad = (bearingDeg - 90) * Math.PI / 180;
+  return [lat + distDeg * Math.sin(rad + Math.PI/2), lng + distDeg * Math.cos(rad + Math.PI/2)];
+}
+
+// ── Tour ─────────────────────────────────────────────────────
+let tour;
+function startTour() {
+  const steps = [
+    {
+      target: '#overview-card',
+      title: '全频段概览（20 MHz–8 GHz）',
+      body: '顶部是完整频谱能量图。纵向颜色编码信号强度：深蓝→青→黄→红。标注线标出关键频点，红色标注为告警信号（黑广播、GPS干扰等）。鼠标悬停可读取频率和业务归属。',
+    },
+    {
+      target: '#overview-card',
+      title: '点击频谱区域',
+      body: '点击频谱上任意位置，系统将以该频率为中心展开瀑布图，并匹配最近的已知信号显示详细分析。现在点击红色标记的 97.4 MHz 或 GPS L1 区域试试看。',
+      action: () => selectSignal('SIG-001'),
+    },
+    {
+      target: '#waterfall-card',
+      title: '时间-频率瀑布图',
+      body: '瀑布图纵轴为时间（最近30分钟），横轴为频率，颜色越亮表示信号越强。可清晰看到持续出现的信号（横向亮带）。下方正在显示 97.4 MHz 黑广播信号的历史活动。',
+    },
+    {
+      target: '#signal-detail-card',
+      title: '信号详情面板',
+      body: '选中信号后下方面板展示完整分析：中心频率、带宽、调制方式、出现次数，以及AI综合研判结论（含调制制式识别、用途推断、置信度）。下方7天历史频次柱图显示活动规律。',
+    },
+    {
+      target: '#main-map',
+      title: '测向地图',
+      body: '地图上自动出现参与测向的站点高亮、各站测向射线（虚线），以及测向线交叉形成的位置估计圆（CEP 120 m）。现在试着选 GPS L1 信号——它将展示6站联合测向+双发射源检测的效果。',
+      action: () => selectSignal('SIG-003'),
+    },
+    {
+      target: '#main-map',
+      title: '同频多源检测（空间谱测向）',
+      body: '蓝色线为GPS L1干扰主源测向，黄色线为空间谱算法检测到的第二个同频发射源。两组交叉点分别标注位置圆，系统自动注明"检测到2个同频发射源"——这是空间谱测向的核心竞争力。',
+    },
+    {
+      target: null,
+      title: '下一步：信号库与告警详情',
+      body: '频谱页展示了从原始信号到测向定位的完整链路。接下来点击「03 信号库」，看告警信号的完整分析记录，包括黑广播的AI语音审核和GNSS干扰的证据链。',
+    },
+  ];
+  tour = new TourGuide(steps);
+  tour.start();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+drawOverview();
+setupOverviewHover();
+buildSignalTabs();
+initMap();
+selectBand(80, 110);
+drawWaterfall();
+
+// Auto-select first alert signal after a moment
+setTimeout(() => selectSignal('SIG-001'), 500);
+</script>
+
+<!-- Tour button -->
+<button style="
+  position:fixed;bottom:28px;right:28px;
+  display:flex;align-items:center;gap:8px;
+  padding:11px 18px;
+  background:linear-gradient(135deg,#3b82f6,#06b6d4);
+  color:white;border:none;border-radius:100px;
+  font-size:12.5px;font-weight:600;cursor:pointer;
+  box-shadow:0 8px 32px rgba(59,130,246,0.4);
+  z-index:800;letter-spacing:0.02em;
+  transition:all 250ms cubic-bezier(0.4,0,0.2,1);
+" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''" onclick="startTour()">
+  ❓ 开始导览
+</button>
+</body>
+</html>

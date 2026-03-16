@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RF·MIND — 信号库</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+.signals-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 14px;
+  height: calc(100vh - var(--nav-height) - 40px);
+}
+
+/* Left: list */
+.sig-list-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  flex-shrink: 0;
+}
+
+.filter-tab {
+  flex: 1;
+  padding: 5px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+
+.filter-tab:hover { background: var(--bg-elevated); color: var(--text-secondary); }
+.filter-tab.active { background: rgba(6,182,212,0.1); color: var(--accent-cyan); border-color: rgba(6,182,212,0.25); }
+.filter-tab.f-alert.active { background: rgba(239,68,68,0.1); color: var(--accent-red); border-color: rgba(239,68,68,0.25); }
+.filter-tab.f-unknown.active { background: rgba(245,158,11,0.1); color: var(--accent-amber); border-color: rgba(245,158,11,0.25); }
+
+.sig-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+}
+
+.sig-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+  margin-bottom: 2px;
+}
+
+.sig-list-item:hover { background: var(--bg-hover); }
+.sig-list-item.active { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); }
+
+.sig-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.ssd-known   { background: var(--accent-green); }
+.ssd-unknown { background: var(--accent-amber); }
+.ssd-alert   { background: var(--accent-red); animation: blink 1.5s ease-in-out infinite; }
+
+.sig-item-body { flex: 1; min-width: 0; }
+.sig-item-freq { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-primary); }
+.sig-item-name { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+.sig-item-right { text-align: right; flex-shrink: 0; }
+.sig-conf { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+
+/* Right: detail */
+.sig-detail-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Alert box at top */
+.alert-section {
+  background: rgba(239,68,68,0.05);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.alert-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(239,68,68,0.08);
+  border-bottom: 1px solid rgba(239,68,68,0.15);
+  cursor: pointer;
+}
+
+.alert-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-red);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-section-body { padding: 0; }
+
+.alert-tab-bar {
+  display: flex;
+  border-bottom: 1px solid rgba(239,68,68,0.15);
+}
+
+.alert-tab {
+  flex: 1;
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+  border-right: 1px solid rgba(239,68,68,0.1);
+}
+
+.alert-tab:last-child { border-right: none; }
+.alert-tab:hover { color: var(--text-secondary); }
+.alert-tab.active { color: var(--accent-red); border-bottom-color: var(--accent-red); }
+
+.alert-content { padding: 14px; }
+
+/* Waveform display */
+.waveform-display {
+  height: 52px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin: 10px 0;
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+/* Detail sections */
+.detail-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.detail-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-section-body { padding: 14px; }
+
+/* Small map */
+#detail-map {
+  height: 180px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+/* Timeline */
+.timeline { }
+.tl-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tl-item:last-child { border-bottom: none; }
+.tl-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); width: 130px; flex-shrink: 0; padding-top: 1px; }
+.tl-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.tl-body { flex: 1; font-size: 11.5px; color: var(--text-secondary); }
+
+/* Info grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.info-cell { }
+.info-cell-label { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+.info-cell-value { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); font-weight: 500; }
+
+/* AI verdict box */
+.verdict-box {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-top: 10px;
+  border: 1px solid var(--border-subtle);
+}
+.verdict-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+.verdict-text  { font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+
+/* Demo section */
+.demo-section {
+  background: linear-gradient(135deg, rgba(59,130,246,0.05), rgba(6,182,212,0.03));
+  border: 1px solid rgba(59,130,246,0.15);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.demo-step {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  opacity: 0.35;
+  transition: opacity 0.4s ease;
+}
+
+.demo-step.active { opacity: 1; }
+.demo-step.done   { opacity: 0.7; }
+
+.demo-step-num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-normal);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.demo-step.active .demo-step-num {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(6,182,212,0.1);
+  box-shadow: 0 0 10px rgba(6,182,212,0.2);
+}
+
+.demo-step.done .demo-step-num {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  background: rgba(16,185,129,0.1);
+}
+
+.demo-step-body { flex: 1; }
+.demo-step-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.demo-step-desc  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+.demo-step-result {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(6,182,212,0.06);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent-cyan);
+  display: none;
+}
+
+.demo-step.done .demo-step-result { display: block; }
+
+/* Blurred content */
+.censored {
+  filter: blur(4px);
+  background: rgba(239,68,68,0.1);
+  border-radius: 2px;
+  padding: 0 2px;
+  user-select: none;
+}
+</style>
+</head>
+<body>
+
+<nav id="nav"></nav>
+<div id="tour-overlay"><div id="tour-tooltip"></div></div>
+
+<main class="page">
+<div class="signals-layout">
+
+  <!-- Left: signal list -->
+  <div class="sig-list-col">
+    <div class="filter-tabs" id="filter-tabs">
+      <button class="filter-tab active" onclick="filterSignals('all', this)">全部</button>
+      <button class="filter-tab f-alert" onclick="filterSignals('alert', this)">⚠ 告警</button>
+      <button class="filter-tab f-unknown" onclick="filterSignals('unknown', this)">未知</button>
+      <button class="filter-tab" onclick="filterSignals('known', this)">已知</button>
+    </div>
+    <div class="sig-list-scroll" id="sig-list"></div>
+  </div>
+
+  <!-- Right: details -->
+  <div class="sig-detail-col" id="sig-detail-col">
+
+    <!-- Alert section (always visible at top) -->
+    <div class="alert-section" id="alert-section">
+      <div class="alert-section-header" onclick="toggleAlertSection()">
+        <div class="alert-section-title">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6.5 1L1 11h11L6.5 1z"/><line x1="6.5" y1="5" x2="6.5" y2="8"/>
+            <circle cx="6.5" cy="9.5" r="0.4" fill="currentColor"/>
+          </svg>
+          活跃告警专区 · 3条
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-red">处理中</span>
+          <span style="color:var(--text-dim);font-size:11px" id="alert-toggle-icon">▲</span>
+        </div>
+      </div>
+      <div class="alert-section-body" id="alert-body">
+        <div class="alert-tab-bar">
+          <div class="alert-tab active" onclick="showAlert(0, this)">📻 97.4 MHz 黑广播</div>
+          <div class="alert-tab" onclick="showAlert(1, this)">📡 GPS L1 干扰</div>
+          <div class="alert-tab" onclick="showAlert(2, this)">✈ 航空VHF干扰</div>
+        </div>
+        <div class="alert-content" id="alert-content"></div>
+      </div>
+    </div>
+
+    <!-- Signal detail panel -->
+    <div id="detail-panel">
+      <div style="padding:24px;text-align:center;color:var(--text-dim);font-size:12px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-lg)">
+        从左侧列表选择信号查看完整分析
+      </div>
+    </div>
+
+    <!-- Demo section -->
+    <div class="demo-section" id="demo-section">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:700;color:var(--accent-primary);letter-spacing:0.04em">
+          AI定性推进演示 — 未知信号 SIG-008（351.225 MHz）
+        </div>
+        <button class="btn btn-primary" style="font-size:11px;padding:6px 12px" id="demo-btn" onclick="startDemo()">▶ 开始演示</button>
+      </div>
+      <div id="demo-steps">
+        <!-- Injected by JS -->
+      </div>
+    </div>
+
+  </div>
+</div>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────
+let currentFilter = 'all';
+let selectedSig = null;
+let detailMap = null;
+let alertOpen = true;
+let currentAlertIdx = 0;
+
+// ── Filter & list ─────────────────────────────────────────────
+function filterSignals(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderList();
+}
+
+function renderList() {
+  const filtered = SIGNALS.filter(s =>
+    currentFilter === 'all' ? true : s.status === currentFilter
+  );
+  document.getElementById('sig-list').innerHTML = filtered.map(s => {
+    const dotClass = { known:'ssd-known', unknown:'ssd-unknown', alert:'ssd-alert' }[s.status];
+    const statusColor = { known:'var(--accent-green)', unknown:'var(--accent-amber)', alert:'var(--accent-red)' }[s.status];
+    return `
+      <div class="sig-list-item${selectedSig?.id === s.id ? ' active' : ''}" id="li-${s.id}" onclick="selectSig('${s.id}')">
+        <div class="sig-status-dot ${dotClass}"></div>
+        <div class="sig-item-body">
+          <div class="sig-item-freq" style="color:${statusColor}">${s.freqStr}</div>
+          <div class="sig-item-name">${s.label}</div>
+        </div>
+        <div class="sig-item-right">
+          <div class="sig-conf">${s.confidence}%</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Select signal ─────────────────────────────────────────────
+function selectSig(id) {
+  selectedSig = SIGNALS.find(s => s.id === id);
+  renderList(); // re-render to update active
+
+  const sig = selectedSig;
+  const statusBadge = { known:'<span class="badge badge-green">已知</span>',
+    unknown:'<span class="badge badge-amber">未知待定性</span>',
+    alert:'<span class="badge badge-red">告警</span>' }[sig.status];
+
+  const tags = sig.tags.map(t => `<span class="tag">${t}</span>`).join(' ');
+
+  const tlData = [
+    { time: sig.firstSeen, color: 'var(--accent-cyan)', text: '首次发现并录入信号库' },
+    { time: sig.firstSeen.split(' ')[0] + ' +2h', color: 'var(--accent-blue)', text: `AI初步分析完成，调制方式识别：${sig.mod}` },
+    { time: sig.lastSeen.split(' ')[0] + ' 08:00', color: 'var(--accent-green)', text: '状态确认为：' + sig.label },
+    { time: sig.lastSeen, color: sig.status==='alert'?'var(--accent-red)':'var(--text-muted)', text: '最近一次检测到信号' },
+  ];
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <div class="detail-section-title">基本信息</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${statusBadge}
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">${sig.id}</span>
+        </div>
+      </div>
+      <div class="detail-section-body">
+        <div class="info-grid" style="margin-bottom:12px">
+          <div class="info-cell">
+            <div class="info-cell-label">中心频率</div>
+            <div class="info-cell-value" style="color:var(--accent-cyan)">${sig.freqStr}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-cell-label">信道带宽</div>
+            <div class="info-cell-value">${sig.bw >= 1000 ? (sig.bw/1000)+'MHz' : sig.bw+'kHz'}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-cell-label">调制方式</div>
+            <div class="info-cell-value">${sig.mod}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-cell-label">首次发现</div>
+            <div class="info-cell-value" style="font-size:10.5px">${sig.firstSeen}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-cell-label">累计发现</div>
+            <div class="info-cell-value">${sig.count.toLocaleString()} 次</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-cell-label">最近出现</div>
+            <div class="info-cell-value" style="font-size:10.5px">${sig.lastSeen}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">${tags}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <div class="detail-section-title">测向与位置</div>
+        <span class="badge badge-cyan">${sig.stations.length}站参与测向</span>
+      </div>
+      <div class="detail-section-body">
+        <div id="detail-map"></div>
+        <div style="margin-top:8px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">
+          参与站点：${sig.stations.map(id => STATIONS.find(s=>s.id===id)?.short).join(' · ')}
+          &nbsp;·&nbsp; 定位精度 CEP ±120 m
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <div class="detail-section-title">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="1" y="1" width="10" height="10" rx="1.5"/>
+            <path d="M3 5h6M3 7.5h4"/>
+          </svg>
+          AI分析结论
+        </div>
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">置信度 ${sig.confidence}%</span>
+      </div>
+      <div class="detail-section-body">
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7">${sig.aiConclusion}</div>
+        <div class="verdict-box" style="margin-top:10px">
+          <div class="verdict-label" style="color:var(--accent-primary)">综合研判</div>
+          <div class="verdict-text">
+            信号特征与业务类型匹配度：${sig.confidence}%。${
+              sig.status === 'known' ? '该信号已完成定性，归入已知信号库，建议持续监测变化。' :
+              sig.status === 'unknown' ? '该信号尚未完成定性，建议增加测向频次，积累更多特征数据后进行深度解析。' :
+              '该信号已触发告警，建议优先处置，相关证据已自动存档备查。'
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <div class="detail-section-title">历史记录时间线</div>
+      </div>
+      <div class="detail-section-body">
+        <div class="timeline">
+          ${tlData.map(t => `
+            <div class="tl-item">
+              <div class="tl-time">${t.time}</div>
+              <div class="tl-dot" style="background:${t.color}"></div>
+              <div class="tl-body">${t.text}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Init detail map
+  setTimeout(() => initDetailMap(sig), 100);
+}
+
+function initDetailMap(sig) {
+  if (detailMap) { detailMap.remove(); detailMap = null; }
+  detailMap = L.map('detail-map', {
+    center: [sig.emitLoc?.lat || 39.87, sig.emitLoc?.lng || 116.38],
+    zoom: 12,
+    zoomControl: false,
+    attributionControl: false,
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(detailMap);
+
+  STATIONS.filter(s => sig.stations.includes(s.id)).forEach(s => {
+    const icon = L.divIcon({
+      html: `<div style="width:16px;height:16px;border-radius:50%;background:rgba(6,182,212,0.2);border:1.5px solid #06b6d4;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:6px;color:#06b6d4">${s.short.split('-')[0]}</div>`,
+      iconSize:[16,16], iconAnchor:[8,8], className:''
+    });
+    L.marker([s.lat, s.lng], {icon}).addTo(detailMap);
+
+    if (sig.bearing[s.id] !== undefined) {
+      const end = computeEndpoint(s.lat, s.lng, sig.bearing[s.id], 0.08);
+      L.polyline([[s.lat, s.lng], end], {color:'#06b6d4', weight:1.5, opacity:0.7, dashArray:'5 3'}).addTo(detailMap);
+    }
+  });
+
+  if (sig.emitLoc) {
+    L.circle([sig.emitLoc.lat, sig.emitLoc.lng], {
+      radius: 120, color: sig.status==='alert'?'#ef4444':'#06b6d4',
+      fillColor: sig.status==='alert'?'#ef444430':'#06b6d430', fillOpacity:0.4, weight:2
+    }).addTo(detailMap);
+  }
+}
+
+function computeEndpoint(lat, lng, bearingDeg, dist) {
+  const rad = (bearingDeg - 90) * Math.PI / 180;
+  return [lat + dist * Math.sin(rad + Math.PI/2), lng + dist * Math.cos(rad + Math.PI/2)];
+}
+
+// ── Alert section ─────────────────────────────────────────────
+function toggleAlertSection() {
+  alertOpen = !alertOpen;
+  document.getElementById('alert-body').style.display = alertOpen ? '' : 'none';
+  document.getElementById('alert-toggle-icon').textContent = alertOpen ? '▲' : '▼';
+}
+
+function showAlert(idx, btn) {
+  currentAlertIdx = idx;
+  document.querySelectorAll('.alert-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderAlertContent(idx);
+}
+
+function renderAlertContent(idx) {
+  const alert = ALERTS[idx];
+  const sig = SIGNALS.find(s => s.id === alert.signalId);
+  const container = document.getElementById('alert-content');
+
+  if (idx === 0) {
+    // Black broadcast
+    const bars = Array.from({length:60}, () => {
+      const rng3 = seededRandom(Math.random()*1000);
+      return Math.floor(rng3() * 80 + 10);
+    });
+    container.innerHTML = `
+      <div class="info-grid" style="margin-bottom:12px">
+        <div class="info-cell"><div class="info-cell-label">频点</div><div class="info-cell-value" style="color:var(--accent-red)">97.400 MHz</div></div>
+        <div class="info-cell"><div class="info-cell-label">发现时间</div><div class="info-cell-value" style="font-size:10.5px">${alert.time}</div></div>
+        <div class="info-cell"><div class="info-cell-label">信号电平</div><div class="info-cell-value">-42 dBm</div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">模拟音频波形（已自动存档）</div>
+      <div class="waveform-display">
+        ${bars.map(h => `<div style="width:3px;height:${h}%;background:var(--accent-red);opacity:0.6;border-radius:1px;min-height:2px"></div>`).join('')}
+      </div>
+      <div class="verdict-box" style="border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.04)">
+        <div class="verdict-label" style="color:var(--accent-red)">AI语音识别 + 内容审核</div>
+        <div class="verdict-text">
+          识别文本（已过滤）：<span class="censored">...转让人体器官，联系方式...</span>
+          <br><br>
+          <strong style="color:var(--accent-red)">判决：违规广播内容</strong>，类型：非法广告。
+          依据：《无线电管理条例》第四十七条、《互联网信息服务管理办法》第十五条。
+          置信度：97%。
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <span class="badge badge-red">证据已存档</span>
+        <span class="badge badge-amber">测向定位完成 CEP±120m</span>
+        <span style="font-size:10.5px;color:var(--text-dim)">测向参与站：SE-04 S-05 SW-06 C-09</span>
+      </div>
+    `;
+  } else if (idx === 1) {
+    // GNSS interference
+    container.innerHTML = `
+      <div class="info-grid" style="margin-bottom:12px">
+        <div class="info-cell"><div class="info-cell-label">频点</div><div class="info-cell-value" style="color:var(--accent-red)">1575.42 MHz</div></div>
+        <div class="info-cell"><div class="info-cell-label">超基线</div><div class="info-cell-value" style="color:var(--accent-red)">+18 dB</div></div>
+        <div class="info-cell"><div class="info-cell-label">受影响站</div><div class="info-cell-value">6 站</div></div>
+      </div>
+      <div class="alert-strip warn" style="margin-bottom:10px">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6.5 1L1 11h11L6.5 1z"/>
+        </svg>
+        检测到带外宽带强信号，覆盖范围 ±15 MHz，扫频速率约 2 MHz/s
+      </div>
+      <div class="verdict-box" style="border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.04)">
+        <div class="verdict-label" style="color:var(--accent-amber)">AI判断</div>
+        <div class="verdict-text">
+          宽带扫频干扰信号，干扰带宽30 MHz，扫频周期约15 s，波形特征符合扫频干扰仪特征。
+          6站空间谱联合测向交叉定位于辖区东北方向，CEP ±150 m。<br><br>
+          <strong style="color:var(--accent-amber)">建议：立即启动执法程序，该信号对GPS、北斗民用服务均构成威胁。</strong>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <span class="badge badge-red">高威胁</span>
+        <span class="badge badge-cyan">6站联合定位</span>
+        <span class="badge badge-amber">检测到2个同频发射源</span>
+      </div>
+    `;
+  } else {
+    // Aviation VHF
+    container.innerHTML = `
+      <div class="info-grid" style="margin-bottom:12px">
+        <div class="info-cell"><div class="info-cell-label">频点</div><div class="info-cell-value" style="color:var(--accent-red)">118.100 MHz</div></div>
+        <div class="info-cell"><div class="info-cell-label">噪底超基线</div><div class="info-cell-value" style="color:var(--accent-amber)">+12 dB</div></div>
+        <div class="info-cell"><div class="info-cell-label">干扰时段</div><div class="info-cell-value" style="font-size:10.5px">14:00–18:00</div></div>
+      </div>
+      <div class="verdict-box" style="border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.04)">
+        <div class="verdict-label" style="color:var(--accent-amber)">AI判断</div>
+        <div class="verdict-text">
+          118.1 MHz连续背景噪声，非调幅话音，频谱形态符合工业设备谐波辐射特征，初步判断为东南方向某工业设施3次谐波（基频约39.37 MHz）。
+          测向交叉定位于辖区东南，4站参与。<br><br>
+          来源申诉：某航空公司运营部，机载VHF进近通话受扰，已转交协调处置。
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <span class="badge badge-amber">无意干扰-工业谐波</span>
+        <span class="badge badge-cyan">4站测向定位</span>
+      </div>
+    `;
+  }
+}
+
+// ── Demo: unknown signal progression ─────────────────────────
+const DEMO_STEPS = [
+  {
+    num:'01', title:'多站数据汇聚',
+    desc:'调取北区站（N-01）与西北站（NW-08）在 351.225 MHz 的历史I/Q数据，共计47分钟原始记录。',
+    result:'✓ I/Q数据加载完成，共 2.3 GB，采样率 10 MSPS'
+  },
+  {
+    num:'02', title:'频谱特征提取',
+    desc:'对原始I/Q数据进行STFT分析，提取信号的时频特征、瞬时频率、包络特征及循环平稳性特征。',
+    result:'✓ 带宽 12.5 kHz | 数字调制 | 循环频率 96 kHz | 包络方差低'
+  },
+  {
+    num:'03', title:'调制方式识别',
+    desc:'使用卷积神经网络分类器对提取特征进行调制识别，与训练集中87种调制方式比对。',
+    result:'✓ 识别结果：4FSK，置信度 78%（次优：π/4-QPSK，置信度 12%）'
+  },
+  {
+    num:'04', title:'帧结构分析',
+    desc:'对4FSK解调后的比特流进行帧同步搜索，尝试已知私有协议特征码库（收录312种）匹配。',
+    result:'✓ 检测到帧头特征：0xEB90，周期 80 ms，帧长 512 bit，含纠错码字段'
+  },
+  {
+    num:'05', title:'综合研判定性',
+    desc:'结合调制方式、帧结构、出现时段（凌晨3–5时）、频率（351 MHz非民用常规）综合研判。',
+    result:'✓ 定性结论：专用数字数传链路，疑似无人机遥控/数传信道，建议上报并持续监测'
+  },
+];
+
+let demoStep = -1;
+let demoRunning = false;
+
+function buildDemoSteps() {
+  document.getElementById('demo-steps').innerHTML = DEMO_STEPS.map((s, i) => `
+    <div class="demo-step" id="ds-${i}">
+      <div class="demo-step-num">${s.num}</div>
+      <div class="demo-step-body">
+        <div class="demo-step-title">${s.title}</div>
+        <div class="demo-step-desc">${s.desc}</div>
+        <div class="demo-step-result">${s.result}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function startDemo() {
+  if (demoRunning) return;
+  demoRunning = true;
+  demoStep = 0;
+  document.getElementById('demo-btn').textContent = '执行中...';
+  document.getElementById('demo-btn').disabled = true;
+
+  // Reset all
+  DEMO_STEPS.forEach((_, i) => {
+    const el = document.getElementById('ds-' + i);
+    if (el) { el.className = 'demo-step'; }
+  });
+
+  runDemoStep(0);
+}
+
+function runDemoStep(idx) {
+  if (idx >= DEMO_STEPS.length) {
+    document.getElementById('demo-btn').textContent = '✓ 定性完成';
+    document.getElementById('demo-btn').style.background = 'var(--accent-green)';
+    demoRunning = false;
+    return;
+  }
+
+  const el = document.getElementById('ds-' + idx);
+  if (el) {
+    el.className = 'demo-step active';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Mark previous as done
+  if (idx > 0) {
+    const prev = document.getElementById('ds-' + (idx-1));
+    if (prev) prev.className = 'demo-step done';
+  }
+
+  setTimeout(() => runDemoStep(idx + 1), 1800 + Math.random() * 800);
+}
+
+// ── Tour ─────────────────────────────────────────────────────
+let tour;
+function startTour() {
+  const steps = [
+    {
+      target: '#filter-tabs',
+      title: '信号状态筛选',
+      body: '左侧列表支持按状态筛选：全部 / 告警 / 未知待定性 / 已知。告警信号状态点会闪烁，直观区分优先级。点击"⚠ 告警"看三条高优先级信号。',
+      action: () => filterSignals('alert', document.querySelector('.f-alert')),
+    },
+    {
+      target: '#alert-section',
+      title: '告警专区 — 黑广播完整链路',
+      body: '顶部告警专区展示三条活跃告警的完整分析记录。当前显示 97.4 MHz 黑广播：包含AI语音识别文本（敏感内容已打码）、违规审核判决、测向定位结果、证据存档状态。',
+      action: () => { showAlert(0, document.querySelectorAll('.alert-tab')[0]); },
+    },
+    {
+      target: '#alert-section',
+      title: 'GNSS干扰告警',
+      body: '切换到 GPS L1 干扰告警：显示干扰信号超基线+18 dB、宽带扫频特征、6站联合测向定位结果，以及空间谱检测到的2个同频发射源。这是系统最重要的能力展示之一。',
+      action: () => { showAlert(1, document.querySelectorAll('.alert-tab')[1]); },
+    },
+    {
+      target: '#sig-list',
+      title: '信号列表 — 选择查看详情',
+      body: '左侧列表包含所有监测到的信号。选中任意信号后右侧展示完整分析面板：基本参数、多站测向小地图、AI结论、历史时间线。现在试着点击一个已知信号。',
+      action: () => { filterSignals('known', document.querySelector('.filter-tab:last-child')); selectSig('SIG-004'); }
+    },
+    {
+      target: '#detail-panel',
+      title: '信号详情面板',
+      body: '完整展示信号的：频率参数、调制方式、出现历史；多站测向小地图（含方位线和定位圆）；AI综合研判结论和置信度；历史状态变更时间线。所有信息一屏展示，支持快速研判。',
+    },
+    {
+      target: '#demo-section',
+      title: 'AI定性推进演示',
+      body: '底部演示模块展示一个未知信号（351.225 MHz）从原始I/Q数据到最终定性的完整AI分析流程：5个步骤，从数据汇聚→特征提取→调制识别→帧结构分析→综合研判。点击"开始演示"观看。',
+      action: () => { document.getElementById('demo-section').scrollIntoView({behavior:'smooth'}); },
+    },
+    {
+      target: null,
+      title: '最后一站：任务执行与报告',
+      body: '信号库展示了系统的信号分析与定性能力。接下来点击「04 任务执行」，看系统如何解析一份自然语言任务文档，自动调度站点执行，并输出结构化报告——这是系统面向管理层的核心交付物。',
+    },
+  ];
+  tour = new TourGuide(steps);
+  tour.start();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderList();
+showAlert(0, document.querySelectorAll('.alert-tab')[0]);
+buildDemoSteps();
+// Auto-select first signal
+setTimeout(() => selectSig('SIG-001'), 200);
+</script>
+
+<!-- Tour button -->
+<button style="
+  position:fixed;bottom:28px;right:28px;
+  display:flex;align-items:center;gap:8px;
+  padding:11px 18px;
+  background:linear-gradient(135deg,#3b82f6,#06b6d4);
+  color:white;border:none;border-radius:100px;
+  font-size:12.5px;font-weight:600;cursor:pointer;
+  box-shadow:0 8px 32px rgba(59,130,246,0.4);
+  z-index:800;letter-spacing:0.02em;
+  transition:all 250ms cubic-bezier(0.4,0,0.2,1);
+" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''" onclick="startTour()">
+  ❓ 开始导览
+</button>
+</body>
+</html>

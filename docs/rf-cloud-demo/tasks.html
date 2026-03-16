@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RF·MIND — 任务执行</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+.tasks-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+/* Left: input */
+.input-col { display: flex; flex-direction: column; gap: 12px; }
+
+.input-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0;
+}
+
+.itab {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+  margin-bottom: -1px;
+}
+
+.itab:hover { color: var(--text-secondary); }
+.itab.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+
+.task-textarea {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.7;
+  padding: 12px;
+  resize: vertical;
+  min-height: 160px;
+  transition: border-color var(--transition-fast);
+  outline: none;
+}
+
+.task-textarea:focus { border-color: rgba(59,130,246,0.5); }
+.task-textarea::placeholder { color: var(--text-dim); }
+
+.preset-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.preset-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(6,182,212,0.06); }
+
+.submit-area {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.submit-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.submit-btn:hover { background: #2563eb; box-shadow: var(--glow-blue); }
+.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.submit-btn svg { width: 14px; height: 14px; }
+
+/* File drop zone */
+.drop-zone {
+  border: 2px dashed var(--border-normal);
+  border-radius: var(--radius-md);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.drop-zone:hover { border-color: var(--accent-cyan); background: rgba(6,182,212,0.04); }
+.drop-zone.drag-over { border-color: var(--accent-cyan); background: rgba(6,182,212,0.08); }
+
+.drop-icon { font-size: 28px; margin-bottom: 8px; }
+.drop-text { font-size: 12px; color: var(--text-secondary); }
+.drop-hint { font-size: 10.5px; color: var(--text-dim); margin-top: 4px; }
+
+/* Right: execution + report */
+.exec-col { display: flex; flex-direction: column; gap: 14px; }
+
+/* Execution flow */
+.exec-flow { display: none; }
+.exec-flow.visible { display: flex; flex-direction: column; gap: 8px; }
+
+.exec-step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  opacity: 0.3;
+  transition: all 0.4s ease;
+}
+
+.exec-step.active {
+  opacity: 1;
+  border-color: rgba(6,182,212,0.3);
+  background: rgba(6,182,212,0.04);
+}
+
+.exec-step.done {
+  opacity: 0.85;
+  border-color: rgba(16,185,129,0.2);
+  background: rgba(16,185,129,0.03);
+}
+
+.exec-step-icon {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-normal);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.exec-step.active .exec-step-icon {
+  border-color: var(--accent-cyan);
+  background: rgba(6,182,212,0.1);
+  box-shadow: 0 0 12px rgba(6,182,212,0.2);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.exec-step.done .exec-step-icon {
+  border-color: var(--accent-green);
+  background: rgba(16,185,129,0.1);
+}
+
+.exec-step-body { flex: 1; min-width: 0; }
+.exec-step-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.exec-step-sub   { font-size: 11px; color: var(--text-muted); }
+
+.exec-step-detail {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--bg-base);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  display: none;
+}
+
+.exec-step.active .exec-step-detail,
+.exec-step.done  .exec-step-detail { display: block; }
+
+/* Highlight extracted */
+.hl-extracted {
+  display: inline;
+  background: rgba(6,182,212,0.15);
+  border-radius: 2px;
+  padding: 0 2px;
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+/* Progress bar */
+.exec-progress {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: none;
+}
+.exec-progress.visible { display: block; }
+
+.prog-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; color: var(--text-secondary); }
+.prog-label span:last-child { font-family: var(--font-mono); color: var(--accent-cyan); }
+
+.log-container {
+  height: 100px;
+  overflow-y: auto;
+  background: var(--bg-base);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  margin-top: 8px;
+}
+
+/* Report section */
+.report-section { display: none; }
+.report-section.visible { display: block; }
+
+.report-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.report-title-bar {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.report-content {
+  padding: 20px 24px;
+  max-height: 520px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.report-content h1 { font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.report-content h2 { font-size: 13px; font-weight: 700; color: var(--accent-cyan); margin: 18px 0 8px; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px; }
+.report-content p  { color: var(--text-secondary); margin-bottom: 10px; }
+.report-content strong { color: var(--text-primary); }
+.report-content .r-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); margin-bottom: 16px; }
+.report-content .r-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 11.5px; }
+.report-content .r-table th { text-align: left; padding: 6px 10px; background: var(--bg-elevated); color: var(--text-secondary); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.report-content .r-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.report-content .r-table tr:last-child td { border-bottom: none; }
+.report-content .r-box { background: var(--bg-elevated); border-left: 3px solid var(--accent-cyan); padding: 10px 14px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin: 10px 0; }
+.report-content .r-box.warn { border-left-color: var(--accent-amber); }
+.report-content .r-box.ok   { border-left-color: var(--accent-green); }
+.report-content .map-placeholder { height: 140px; background: var(--bg-elevated); border-radius: var(--radius-md); display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:11px; border:1px dashed var(--border-normal); margin:8px 0; }
+</style>
+</head>
+<body>
+
+<nav id="nav"></nav>
+<div id="tour-overlay"><div id="tour-tooltip"></div></div>
+
+<main class="page">
+<div class="tasks-layout">
+
+  <!-- Left: input -->
+  <div class="input-col">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="1" y="1" width="12" height="12" rx="1.5"/>
+            <path d="M4 5h6M4 7.5h4"/>
+          </svg>
+          任务输入
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="input-tabs">
+          <div class="itab active" id="tab-text" onclick="switchInputTab('text')">文本输入</div>
+          <div class="itab" id="tab-file" onclick="switchInputTab('file')">文件上传</div>
+        </div>
+
+        <div id="text-input-area" style="margin-top:10px">
+          <textarea class="task-textarea" id="task-input"
+            placeholder="输入自然语言任务描述，或粘贴任务通知单、干扰申诉单等文档内容..."></textarea>
+        </div>
+
+        <div id="file-input-area" style="margin-top:10px;display:none">
+          <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div class="drop-icon">📄</div>
+            <div class="drop-text">拖拽文件到此处，或点击选择</div>
+            <div class="drop-hint">支持 .txt / .pdf / .doc / .docx 格式</div>
+          </div>
+          <input type="file" id="file-input" style="display:none" accept=".txt,.pdf,.doc,.docx" onchange="handleFileUpload(event)">
+          <div id="file-status" style="display:none;margin-top:8px"></div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="font-size:10.5px;color:var(--text-dim);margin-bottom:6px;font-family:var(--font-mono);letter-spacing:0.04em">示例任务快速填入：</div>
+          <div class="preset-btns">
+            <button class="preset-btn" onclick="loadPreset(0)">频段占用度统计</button>
+            <button class="preset-btn" onclick="loadPreset(1)">航空VHF干扰排查</button>
+            <button class="preset-btn" onclick="loadPreset(2)">市民WiFi干扰投诉</button>
+          </div>
+        </div>
+
+        <div class="submit-area" style="margin-top:12px">
+          <button class="submit-btn" id="submit-btn" onclick="submitTask()">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M2 7h10M8 3l4 4-4 4"/>
+            </svg>
+            提交任务
+          </button>
+          <button class="btn btn-outline" onclick="resetAll()" style="font-size:11.5px">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Extracted fields preview (shown during/after execution) -->
+    <div id="extracted-card" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">任务要素提取结果</div>
+          <span class="badge badge-cyan">AI解析</span>
+        </div>
+        <div class="card-body" id="extracted-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: execution + report -->
+  <div class="exec-col">
+
+    <!-- Placeholder -->
+    <div id="exec-placeholder" class="card" style="padding:40px;text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px">AI任务执行引擎</div>
+      <div style="font-size:12px;color:var(--text-muted);max-width:280px;margin:0 auto;line-height:1.7">
+        输入任务文档，AI将自动解析任务要素，调度监测站点，执行数据分析，生成结构化报告。
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <span class="badge badge-cyan">自然语言理解</span>
+        <span class="badge badge-green">智能站点调度</span>
+        <span class="badge badge-blue">多站数据融合</span>
+        <span class="badge badge-gray">报告自动生成</span>
+      </div>
+    </div>
+
+    <!-- Execution flow steps -->
+    <div class="exec-flow" id="exec-flow"></div>
+
+    <!-- Progress -->
+    <div class="exec-progress" id="exec-progress">
+      <div class="prog-label">
+        <span>任务执行进度</span>
+        <span id="prog-pct">0%</span>
+      </div>
+      <div class="progress-bar" style="height:5px">
+        <div class="progress-fill" id="prog-fill" style="width:0%"></div>
+      </div>
+      <div class="log-container" id="log-container"></div>
+    </div>
+
+    <!-- Report -->
+    <div class="report-section" id="report-section">
+      <div class="report-box">
+        <div class="report-toolbar">
+          <div class="report-title-bar" id="report-title-bar">任务报告</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="window.print()">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 1h6v3H3V1z"/><path d="M1 4h10v5H8v2H4V9H1V4z"/>
+              </svg>
+              导出PDF
+            </button>
+            <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="copyReport()">
+              复制文本
+            </button>
+          </div>
+        </div>
+        <div class="report-content" id="report-content"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</main>
+
+<script src="assets/common.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+// ── Preset tasks ──────────────────────────────────────────────
+const PRESETS = [
+  {
+    name: '频段占用度统计',
+    text: `任务通知单
+任务编号：2024-11-089
+任务类型：频段占用度统计
+目标频段：800MHz–900MHz（含移动通信频段）
+统计时段：本周工作日 08:00–22:00
+要求：统计各子频段占用度，输出占用度分布图及超标频点清单
+签发单位：辖区无线电管理局`,
+    presetIdx: 0
+  },
+  {
+    name: '航空VHF干扰排查',
+    text: `干扰申诉单
+申诉编号：ZS-2024-0892
+申诉人：某航空公司运营部
+申诉内容：近期在本市东南方向进近过程中，机载VHF通信频率118.1MHz受到持续干扰，表现为背景噪声增大、通话质量下降，影响飞行安全。
+干扰发生时段：每日14:00–18:00
+请求排查干扰源位置及性质。`,
+    presetIdx: 1
+  },
+  {
+    name: '市民WiFi/蓝牙干扰投诉',
+    text: `市民热线工单
+工单号：12345-20241108-4421
+来电人反映：家住朝阳区XX路附近，最近一周蓝牙耳机和无线键盘经常断线，家里WiFi也不稳定，怀疑附近有干扰设备，请求调查。
+联系方式：已登记
+地址：朝阳区XX路XX号附近`,
+    presetIdx: 2
+  },
+];
+
+const EXTRACTED_DATA = [
+  {
+    taskType:'频段占用度统计',
+    freqRange:'800 MHz — 900 MHz',
+    freqMapped:'LTE B5 (824–849 / 869–894 MHz) · CDMA 800 · 2G GSM 900',
+    timeRange:'周一至周五 08:00–22:00',
+    geoScope:'辖区全域',
+    criterion:'占用度 > 80% 为超标',
+    stations:'全部10站参与，主要：NE-02 E-03 SE-04',
+  },
+  {
+    taskType:'干扰源排查',
+    freqRange:'118.100 MHz (VHF航空频段)',
+    freqMapped:'民用航空VHF通信 118–136 MHz，重点 118.1 MHz',
+    timeRange:'每日 14:00–18:00',
+    geoScope:'本市东南方向，进近航路附近',
+    criterion:'超基线 > 3 dB 判定为异常',
+    stations:'重点调度：SE-04 S-05 R-10，辅助：E-03',
+  },
+  {
+    taskType:'干扰源排查',
+    freqRange:'2.402–2.480 GHz (蓝牙) · 2.400–2.484 GHz (WiFi 2.4G) · 5.150–5.850 GHz (WiFi 5G)',
+    freqMapped:'Bluetooth BR/EDR/BLE · IEEE 802.11b/g/n/ax 2.4G · IEEE 802.11a/n/ac/ax 5G',
+    timeRange:'近一周，重点近7天',
+    geoScope:'朝阳区XX路周边约500 m范围',
+    criterion:'信道占用度异常、非法发射功率超标',
+    stations:'调度：C-09 N-01 NE-02（距该区域最近）',
+  },
+];
+
+const LOG_TEMPLATES = [
+  'N-01 → 数据帧接收 OK，RSSI=-72dBm',
+  'AI → 开始信号特征提取...',
+  'E-03 → 测向计算完成，方位角 224.7°',
+  'SE-04 → 数据上传完成，1.2 MB',
+  'C-09 → I/Q数据对齐，时钟偏差 ±12 ns',
+  'AI → 频率映射完成，覆盖18个子频段',
+  'S-05 → 扫描完成，发现信号 23 条',
+  'AI → 测向数据融合，CEP估计 ±140 m',
+  'NE-02 → 扫描 800–900 MHz，占用率 67.3%',
+  'R-10 → 远端站数据同步中...',
+  'AI → 信号库比对，匹配 312/342 条已知信号',
+  'SW-06 → 功率谱密度计算完成',
+  'AI → 异常频点检测，发现 3 处超标',
+  'AI → 综合研判完成，报告生成中...',
+];
+
+// ── State ─────────────────────────────────────────────────────
+let currentPreset = 0;
+let execRunning = false;
+let logInterval = null;
+
+// ── Input tab switch ──────────────────────────────────────────
+function switchInputTab(tab) {
+  document.getElementById('tab-text').classList.toggle('active', tab === 'text');
+  document.getElementById('tab-file').classList.toggle('active', tab === 'file');
+  document.getElementById('text-input-area').style.display = tab === 'text' ? '' : 'none';
+  document.getElementById('file-input-area').style.display = tab === 'file' ? '' : 'none';
+}
+
+// ── Load preset ───────────────────────────────────────────────
+function loadPreset(idx) {
+  currentPreset = idx;
+  document.getElementById('task-input').value = PRESETS[idx].text;
+  switchInputTab('text');
+}
+
+// ── File upload ───────────────────────────────────────────────
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('file-status');
+  status.style.display = 'block';
+  status.innerHTML = `
+    <div class="alert-strip info" style="margin-top:0">
+      <div class="queue-spinner" style="width:14px;height:14px;border-width:2px"></div>
+      <span>AI正在解析文档：<strong>${file.name}</strong>（${(file.size/1024).toFixed(1)} KB）...</span>
+    </div>
+  `;
+  setTimeout(() => {
+    status.innerHTML = `
+      <div class="alert-strip" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.2);color:var(--accent-green)">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="6.5" cy="6.5" r="5.5"/><path d="M4 6.5l2 2 3-3"/>
+        </svg>
+        文档解析完成：${file.name} · 已识别任务要素，可直接提交
+      </div>
+    `;
+  }, 1800);
+}
+
+// ── Drag & drop ───────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileUpload({target:{files:[file]}});
+});
+
+// ── Execution steps config ────────────────────────────────────
+function getExecSteps(presetIdx) {
+  const steps = [
+    {
+      icon:'📄', title:'文档解析 & 信息抽取',
+      sub:'识别任务类型、目标频段、时间窗口、地理范围',
+      detail: () => {
+        const ex = EXTRACTED_DATA[presetIdx];
+        const txt = document.getElementById('task-input').value;
+        // Highlight key phrases
+        const highlighted = txt.replace(/([\d.]+MHz|[\d.]+GHz|[\d:]{4,5}|东南|朝阳区|蓝牙|WiFi|VHF|GPS)/g,
+          '<span class="hl-extracted">$1</span>');
+        return `<div style="font-size:10.5px;color:var(--text-secondary);line-height:1.7">${highlighted.replace(/\n/g,'<br>')}</div>`;
+      }
+    },
+    {
+      icon:'🔍', title:'任务要素结构化提取',
+      sub:'任务类型、目标频段、时间范围、地理范围、判断基准',
+      detail: () => {
+        const ex = EXTRACTED_DATA[presetIdx];
+        showExtractedCard(ex);
+        return `
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px">
+            <span style="color:var(--text-dim)">任务类型</span><span class="hl-extracted">${ex.taskType}</span>
+            <span style="color:var(--text-dim)">目标频段</span><span class="hl-extracted">${ex.freqRange}</span>
+            <span style="color:var(--text-dim)">统计时段</span><span class="hl-extracted">${ex.timeRange}</span>
+          </div>
+        `;
+      }
+    },
+    {
+      icon:'🗺', title:'频率映射 & 业务归属',
+      sub:'将业务描述转换为具体频率范围和对应无线电业务',
+      detail: () => {
+        const ex = EXTRACTED_DATA[presetIdx];
+        return `<div style="font-size:11px;color:var(--text-secondary);line-height:1.7">${ex.freqMapped}</div>`;
+      }
+    },
+    {
+      icon:'📡', title:'站点调度方案',
+      sub:'根据地理覆盖和任务类型自动分配站点分工',
+      detail: () => {
+        const ex = EXTRACTED_DATA[presetIdx];
+        return `<div style="font-size:11px;color:var(--text-secondary)">${ex.stations}</div>`;
+      }
+    },
+    {
+      icon:'⚙', title:'多站并行执行',
+      sub:'各站点同步扫描，实时回传数据',
+      detail: () => `<div style="font-size:11px;color:var(--accent-green)">● 执行中，详见进度日志</div>`
+    },
+    {
+      icon:'🤖', title:'AI综合分析',
+      sub:'多站数据融合，信号识别，异常检测，测向交叉',
+      detail: () => `<div style="font-size:11px;color:var(--accent-cyan)">● AI正在融合10站数据进行研判...</div>`
+    },
+    {
+      icon:'📊', title:'报告生成',
+      sub:'结构化分析报告，含执行摘要、发现与建议',
+      detail: () => `<div style="font-size:11px;color:var(--accent-green)">✓ 报告已生成</div>`
+    },
+  ];
+  return steps;
+}
+
+// ── Submit task ───────────────────────────────────────────────
+function submitTask() {
+  if (execRunning) return;
+  const input = document.getElementById('task-input').value.trim();
+  if (!input && document.getElementById('text-input-area').style.display !== 'none') {
+    // Auto-load preset 0
+    loadPreset(0);
+  }
+
+  execRunning = true;
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('submit-btn').textContent = '执行中...';
+  document.getElementById('exec-placeholder').style.display = 'none';
+  document.getElementById('report-section').classList.remove('visible');
+
+  // Determine which preset we're running
+  const input2 = document.getElementById('task-input').value;
+  let pIdx = 0;
+  if (input2.includes('118.1') || input2.includes('航空')) pIdx = 1;
+  else if (input2.includes('蓝牙') || input2.includes('WiFi') || input2.includes('12345')) pIdx = 2;
+
+  const steps = getExecSteps(pIdx);
+
+  // Render step shells
+  const flowEl = document.getElementById('exec-flow');
+  flowEl.innerHTML = steps.map((s, i) => `
+    <div class="exec-step" id="es-${i}">
+      <div class="exec-step-icon">${s.icon}</div>
+      <div class="exec-step-body">
+        <div class="exec-step-title">${s.title}</div>
+        <div class="exec-step-sub">${s.sub}</div>
+        <div class="exec-step-detail" id="esd-${i}"></div>
+      </div>
+    </div>
+  `).join('');
+  flowEl.classList.add('visible');
+
+  runExecStep(0, steps, pIdx);
+}
+
+function runExecStep(idx, steps, pIdx) {
+  if (idx >= steps.length) {
+    finishExecution(pIdx);
+    return;
+  }
+
+  const el = document.getElementById('es-' + idx);
+  el.className = 'exec-step active';
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+  const detail = steps[idx].detail();
+  document.getElementById('esd-' + idx).innerHTML = detail;
+
+  // Show progress on step 4
+  if (idx === 4) showProgress();
+
+  const delay = idx === 4 ? 3500 : (1200 + Math.random() * 600);
+
+  setTimeout(() => {
+    el.className = 'exec-step done';
+    el.querySelector('.exec-step-icon').textContent = '✓';
+    if (idx === 4) stopProgress();
+    runExecStep(idx + 1, steps, pIdx);
+  }, delay);
+}
+
+function showProgress() {
+  const prog = document.getElementById('exec-progress');
+  prog.classList.add('visible');
+  let pct = 0;
+  let logIdx = 0;
+
+  const interval = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 8 + 2, 98);
+    document.getElementById('prog-fill').style.width = pct + '%';
+    document.getElementById('prog-pct').textContent = Math.round(pct) + '%';
+
+    // Add log line
+    const logEl = document.getElementById('log-container');
+    const t = new Date();
+    const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+    const msg = LOG_TEMPLATES[logIdx % LOG_TEMPLATES.length];
+    logIdx++;
+    const level = msg.startsWith('AI') ? 'info' : 'ok';
+    logEl.insertAdjacentHTML('beforeend', `
+      <div class="log-line">
+        <span class="log-time">${ts}</span>
+        <span class="log-level ${level}">${level.toUpperCase()}</span>
+        <span class="log-msg">${msg}</span>
+      </div>
+    `);
+    logEl.scrollTop = logEl.scrollHeight;
+    logInterval = interval;
+  }, 300);
+}
+
+function stopProgress() {
+  clearInterval(logInterval);
+  document.getElementById('prog-fill').style.width = '100%';
+  document.getElementById('prog-pct').textContent = '100%';
+}
+
+function showExtractedCard(ex) {
+  const card = document.getElementById('extracted-card');
+  card.style.display = 'block';
+  document.getElementById('extracted-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${Object.entries({
+        '任务类型': ex.taskType,
+        '目标频段': ex.freqRange,
+        '业务对应': ex.freqMapped,
+        '执行时段': ex.timeRange,
+        '地理范围': ex.geoScope,
+        '判断标准': ex.criterion,
+        '调度站点': ex.stations,
+      }).map(([k,v]) => `
+        <div style="display:flex;gap:8px;font-size:11.5px">
+          <span style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;width:70px;flex-shrink:0;padding-top:2px;letter-spacing:0.04em;text-transform:uppercase">${k}</span>
+          <span style="color:var(--text-primary)">${v}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function finishExecution(pIdx) {
+  document.getElementById('exec-progress').classList.remove('visible');
+  execRunning = false;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = `
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+      <circle cx="7" cy="7" r="6"/><path d="M4.5 7l2 2 3-3"/>
+    </svg>
+    报告已生成
+  `;
+  btn.style.background = 'var(--accent-green)';
+
+  generateReport(pIdx);
+  document.getElementById('report-section').classList.add('visible');
+  setTimeout(() => {
+    document.getElementById('report-section').scrollIntoView({ behavior:'smooth' });
+  }, 300);
+}
+
+// ── Report generation ─────────────────────────────────────────
+const REPORTS = [
+  // Preset 0: frequency occupancy
+  (now) => `
+    <h1>辖区 800–900 MHz 频段占用度统计报告</h1>
+    <div class="r-meta">
+      报告编号：RPT-2024-11-089 &nbsp;·&nbsp; 生成时间：${now} &nbsp;·&nbsp; 系统：RF·MIND v2.1<br>
+      任务编号：2024-11-089 &nbsp;·&nbsp; 调用站点：10站 &nbsp;·&nbsp; 扫描时段：本周工作日 08:00–22:00
+    </div>
+    <h2>01 任务摘要</h2>
+    <p>本报告由AI自动生成，任务来源为无线电管理局通知单（任务编号2024-11-089）。对辖区800–900 MHz频段进行全周工作日08:00–22:00时段的信道占用度统计，统计精度25 kHz/信道，共计4,000个信道。</p>
+    <h2>02 执行情况</h2>
+    <table class="r-table">
+      <tr><th>项目</th><th>数值</th></tr>
+      <tr><td>参与站点</td><td>10个（全部在线）</td></tr>
+      <tr><td>有效扫描时长</td><td>70小时（5工作日×14小时）</td></tr>
+      <tr><td>采样点总量</td><td>1.26亿次</td></tr>
+      <tr><td>检测信号条数</td><td>4,712条</td></tr>
+    </table>
+    <h2>03 发现与分析</h2>
+    <p>800–900 MHz频段总体信道占用率为<strong>38.7%</strong>，高于全国平均水平（约28%）。</p>
+    <div class="r-box">
+      <strong>高占用子频段（>80%）：</strong><br>
+      • 824–849 MHz（LTE B5上行）：占用率 84.2%，符合规律，主要为移动通信上行信号<br>
+      • 869–894 MHz（LTE B5下行）：占用率 91.6%，密集城区正常水平<br>
+      • 880–890 MHz（GSM 900）：占用率 82.1%
+    </div>
+    <div class="r-box warn">
+      <strong>超标频点（非授权占用）：</strong><br>
+      • 857.325 MHz：持续占用，非移动通信标准频率，疑似无线传声器，建议排查<br>
+      • 863.500 MHz：间歇占用，功率较低，疑似ISM设备，需确认是否符合规定<br>
+      • 874.100 MHz：占用率22%，间歇出现，特征不明，建议进一步定性
+    </div>
+    <div class="map-placeholder">[ 测向定位图 — 超标频点分布（导出PDF时含矢量地图） ]</div>
+    <h2>04 建议措施</h2>
+    <p>① 对857.325 MHz超标频点实施测向溯源，排查是否为无证无线传声器设备。<br>
+    ② 对863.5 MHz的ISM设备进行功率符合性核查。<br>
+    ③ 建议将本频段纳入常规月度统计，建立历史占用度曲线对比基准。</p>
+    <h2>05 AI研判依据与置信度</h2>
+    <div class="r-box ok">
+      统计置信度：98.5%（基于10站全覆盖，无数据缺失）。超标频点识别置信度：857.325 MHz 91%，863.5 MHz 85%，874.1 MHz 67%（特征不足，建议人工复核）。
+    </div>
+  `,
+  // Preset 1: aviation interference
+  (now) => `
+    <h1>118.1 MHz 航空VHF干扰源排查报告</h1>
+    <div class="r-meta">
+      报告编号：RPT-ZS-2024-0892 &nbsp;·&nbsp; 生成时间：${now} &nbsp;·&nbsp; 系统：RF·MIND v2.1<br>
+      申诉编号：ZS-2024-0892 &nbsp;·&nbsp; 调用站点：SE-04 S-05 E-03 R-10 &nbsp;·&nbsp; 测向站：4站
+    </div>
+    <h2>01 任务摘要</h2>
+    <p>本报告响应某航空公司运营部申诉（编号ZS-2024-0892），排查118.1 MHz航空VHF频率干扰源。干扰时段为每日14:00–18:00，据申诉人描述表现为背景噪声增大。</p>
+    <h2>02 信号特征分析</h2>
+    <div class="r-box">
+      <strong>干扰信号特征：</strong><br>
+      • 频点：118.100 MHz（精度 ±1 kHz）<br>
+      • 信号类型：连续背景噪声，非调幅话音<br>
+      • 频谱形态：宽带扁平噪声，带宽约40 kHz<br>
+      • 信号电平：-54 dBm（SE-04站，基线超出+12 dB）<br>
+      • 出现规律：14:00–18:00，周期性，与工作时间吻合
+    </div>
+    <h2>03 测向与定位</h2>
+    <p>4站参与测向，SE-04为主测向站（正南方向最佳几何条件），E-03和R-10辅助。测向交叉定位于辖区东南方向，坐标估计：116.50°E, 39.74°N，CEP ±180 m。</p>
+    <div class="map-placeholder">[ 4站测向线交叉定位图 — 东南方向工业区 ]</div>
+    <div class="r-box warn">
+      <strong>AI研判结论：</strong>干扰来源疑似工业设备谐波辐射。<br>
+      基频推算：118.1 / 3 ≈ 39.37 MHz（3次谐波），39 MHz附近存在工业感应加热设备频率。位置与东南方向工业厂区吻合。建议实地勘查确认。
+    </div>
+    <h2>04 建议措施</h2>
+    <p>① 立即前往定位区域（116.50°E, 39.74°N，半径200 m）实地排查工业设备。<br>
+    ② 重点检查感应加热炉、工业微波设备等可能产生39 MHz基频辐射的设备。<br>
+    ③ 若确认为工业谐波，依据《无线电管理条例》第四十四条责令整改，安装频率屏蔽或滤波装置。<br>
+    ④ 案件归档，建议向民航部门通报处置结果。</p>
+    <h2>05 AI研判依据与置信度</h2>
+    <div class="r-box ok">
+      干扰定性置信度：工业谐波 82%（次选：无意ISM设备 15%）。
+      测向定位置信度：CEP ±180 m，DOP值良好（4站几何）。建议人工勘查验证最终结论。
+    </div>
+  `,
+  // Preset 2: WiFi/BT complaint
+  (now) => `
+    <h1>朝阳区2.4G/5G频段干扰排查报告</h1>
+    <div class="r-meta">
+      报告编号：RPT-12345-20241108-4421 &nbsp;·&nbsp; 生成时间：${now} &nbsp;·&nbsp; 系统：RF·MIND v2.1<br>
+      工单号：12345-20241108-4421 &nbsp;·&nbsp; 调用站点：C-09 N-01 NE-02
+    </div>
+    <h2>01 任务摘要</h2>
+    <p>本报告响应市民热线工单（12345-20241108-4421），投诉朝阳区某地址附近蓝牙设备断线、WiFi不稳定问题，排查可能的无线干扰源。</p>
+    <h2>02 频段扫描结果</h2>
+    <table class="r-table">
+      <tr><th>频段</th><th>信道占用率</th><th>异常情况</th></tr>
+      <tr><td>BT 2.402–2.480 GHz</td><td>73.2%</td><td><span style="color:var(--accent-amber)">偏高，BT跳频密集</span></td></tr>
+      <tr><td>WiFi 2.4G Ch1–13</td><td>81.5%</td><td><span style="color:var(--accent-amber)">信道拥挤，Ch6超标</span></td></tr>
+      <tr><td>WiFi 5G 5.15–5.85GHz</td><td>44.1%</td><td><span style="color:var(--accent-green)">正常</span></td></tr>
+    </table>
+    <div class="r-box warn">
+      <strong>异常发现：</strong><br>
+      • 2.450 GHz附近检测到持续宽带信号（带宽约30 MHz），非WiFi标准信道。电平偏高，超周边基站基线+9 dB。<br>
+      • 特征初步判断：无线视频传输设备（模拟无线摄像头）或工业ISM设备，工作于2.4 GHz宽带视频传输模式。<br>
+      • 位置估计：投诉地址北偏东约80 m（某商铺或停车场设备间）
+    </div>
+    <h2>03 建议措施</h2>
+    <p>① 向投诉人告知：主要干扰来源疑似附近非标准宽带视频传输设备，并非设备故障。<br>
+    ② 对2.450 GHz宽带信号设备进行现场核查，若为无证宽带视频传输器，依规责令整改。<br>
+    ③ 建议市民短期内将WiFi信道切换至信道1或11，或升级至5G WiFi以规避2.4G拥挤。</p>
+    <h2>04 AI研判依据与置信度</h2>
+    <div class="r-box ok">
+      主要干扰源定性：宽带ISM干扰设备（模拟无线摄像头）置信度 79%。定位CEP ±80 m（3站覆盖，近距离）。
+      整体电磁环境评估：2.4 GHz信道拥挤属城市密集区正常偏高水平，无非法大功率发射器迹象。
+    </div>
+  `,
+];
+
+function generateReport(pIdx) {
+  const now = formatTime();
+  const content = REPORTS[pIdx](now);
+  document.getElementById('report-content').innerHTML = content;
+  document.getElementById('report-title-bar').textContent =
+    ['频段占用度统计报告', '航空VHF干扰排查报告', '2.4G/5G干扰排查报告'][pIdx];
+}
+
+function copyReport() {
+  const text = document.getElementById('report-content').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+function resetAll() {
+  document.getElementById('task-input').value = '';
+  document.getElementById('extracted-card').style.display = 'none';
+  document.getElementById('exec-flow').classList.remove('visible');
+  document.getElementById('exec-progress').classList.remove('visible');
+  document.getElementById('report-section').classList.remove('visible');
+  document.getElementById('exec-placeholder').style.display = '';
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = `
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+      <path d="M2 7h10M8 3l4 4-4 4"/>
+    </svg>
+    提交任务
+  `;
+  btn.style.background = '';
+  execRunning = false;
+}
+
+// ── Tour ─────────────────────────────────────────────────────
+let tour;
+function startTour() {
+  const steps = [
+    {
+      target: null,
+      title: '任务执行页 — 系统的"执行大脑"',
+      body: '这是系统的任务驱动入口：将一份自然语言任务文档（通知单、申诉单、工单）丢给系统，AI自动完成从理解→调度→执行→报告的完整闭环。我们来走一遍完整流程。',
+    },
+    {
+      target: '.preset-btns',
+      title: '三种典型任务场景',
+      body: '三个预设示例涵盖监管工作中最常见的三类任务：频率资源统计、干扰投诉排查、市民热线工单。点击任意一个自动填入真实格式的任务文档。',
+      action: () => loadPreset(1),
+    },
+    {
+      target: '.task-textarea',
+      title: '任务文档——原始格式即可',
+      body: '已填入一份真实格式的航空VHF干扰申诉单。注意：这是非结构化自然语言，AI需要从中提取：干扰频点（118.1 MHz）、时段（14:00-18:00）、地域（东南方向进近航路）等关键要素。',
+    },
+    {
+      target: '.submit-btn',
+      title: '提交任务，AI开始执行',
+      body: '点击"提交任务"后，右侧将逐步展示AI的7个处理步骤：文档解析→要素提取→频率映射→站点调度→并行执行→AI分析→报告生成。现在点击看演示效果。',
+      action: () => submitTask(),
+    },
+    {
+      target: '#exec-flow',
+      title: 'AI处理步骤可视化',
+      body: '每个步骤实时展示AI的处理动作和中间结论：频段映射推理（"VHF118.1 MHz → 民用航空通信频段"）、站点调度决策（"SE-04主测向，E-03辅助"）、进度日志流。',
+    },
+    {
+      target: '#extracted-card',
+      title: '结构化要素提取结果',
+      body: '左侧面板展示AI从非结构化文本中提取的结构化要素：任务类型、目标频段（含业务归属）、执行时段、地理范围、判断标准、调度站点。这是AI理解能力的核心体现。',
+    },
+    {
+      target: '#report-section',
+      title: '自动生成结构化报告',
+      body: '最终输出：完整的排查分析报告，包含执行摘要、信号特征分析、测向定位结果（含地图占位）、建议措施、AI置信度说明。支持导出PDF或复制文本。这就是系统交付给管理者的核心产出。',
+      action: () => document.getElementById('report-section').scrollIntoView({behavior:'smooth'}),
+    },
+    {
+      target: null,
+      title: '演示完成 ✓',
+      body: '四个页面的完整演示已结束。\n\n核心能力链路：\n全频段感知 → 频谱可视化 → 多站测向定位 → AI信号定性 → 自然语言任务驱动 → 结构化报告输出\n\n系统具备向专家展示的完整技术深度。',
+    },
+  ];
+  tour = new TourGuide(steps);
+  tour.start();
+}
+
+// ── Auto-load first preset on load ────────────────────────────
+loadPreset(0);
+</script>
+
+<!-- Tour button -->
+<button style="
+  position:fixed;bottom:28px;right:28px;
+  display:flex;align-items:center;gap:8px;
+  padding:11px 18px;
+  background:linear-gradient(135deg,#3b82f6,#06b6d4);
+  color:white;border:none;border-radius:100px;
+  font-size:12.5px;font-weight:600;cursor:pointer;
+  box-shadow:0 8px 32px rgba(59,130,246,0.4);
+  z-index:800;letter-spacing:0.02em;
+  transition:all 250ms cubic-bezier(0.4,0,0.2,1);
+" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''" onclick="startTour()">
+  ❓ 开始导览
+</button>
+</body>
+</html>
