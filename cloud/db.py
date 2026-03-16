@@ -144,6 +144,43 @@ CREATE TABLE IF NOT EXISTS task_stations (
 
 CREATE INDEX IF NOT EXISTS ix_tasks_created ON tasks (created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_task_stations_station ON task_stations (station_id, task_id);
+
+-- Signal analyses: results from local detection + optional AI
+CREATE TABLE IF NOT EXISTS signal_analyses (
+    analysis_id     BIGSERIAL PRIMARY KEY,
+    station_id      TEXT NOT NULL,
+    frame_id        BIGINT,
+    freq_start_hz   DOUBLE PRECISION NOT NULL,
+    freq_stop_hz    DOUBLE PRECISION NOT NULL,
+    period_start_ms BIGINT NOT NULL,
+    period_end_ms   BIGINT NOT NULL,
+    threshold_dbm   DOUBLE PRECISION NOT NULL DEFAULT -90.0,
+    detections      TEXT NOT NULL DEFAULT '[]',  -- JSON list of detected signals
+    ai_summary      TEXT,                         -- AI-generated text (optional)
+    ai_backend      TEXT,                         -- 'claude' / 'openai' / 'local'
+    status          TEXT NOT NULL DEFAULT 'new',  -- new/confirmed/dismissed
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_analyses_station ON signal_analyses (station_id, created_at DESC);
+
+-- Signal library: manually catalogued or AI-identified signals
+CREATE TABLE IF NOT EXISTS signal_records (
+    signal_id       BIGSERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    freq_center_hz  DOUBLE PRECISION NOT NULL,
+    bandwidth_hz    DOUBLE PRECISION,
+    modulation      TEXT,
+    service         TEXT,
+    authority       TEXT,
+    station_id      TEXT,
+    first_seen_ms   BIGINT,
+    last_seen_ms    BIGINT,
+    max_dbm         DOUBLE PRECISION,
+    notes           TEXT,
+    status          TEXT NOT NULL DEFAULT 'active',  -- active / archived
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_signals_freq ON signal_records (freq_center_hz);
 """
 
 def init_schema() -> None:
@@ -658,3 +695,253 @@ def query_channel_max_levels(
             "max_dbm": round(float(mx), 1) if mx > -999.0 else None,
         })
     return result
+
+
+# ── spectrum snapshots (Phase 7: historical playback) ─────────────────────────
+
+def list_snapshots(
+    station_id: str,
+    start_ms: int,
+    end_ms: int,
+    limit: int = 1000,
+) -> list[dict]:
+    """
+    Return frame metadata (no blob) for the given station + time window.
+    Used by the playback UI to build a timeline of available frames.
+    """
+    sql = """
+        SELECT frame_id, station_id, period_start_ms, period_end_ms,
+               sweep_count, freq_start_hz, freq_step_hz, num_points
+        FROM spectrum_frames
+        WHERE station_id = %s
+          AND period_start_ms >= %s
+          AND period_end_ms   <= %s
+        ORDER BY period_start_ms
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (station_id, start_ms, end_ms, limit))
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_snapshot(frame_id: int) -> dict | None:
+    """
+    Return a single spectrum frame (with levels blob) by frame_id.
+    Used by the playback UI when the user selects a specific frame.
+    """
+    sql = """
+        SELECT frame_id, station_id, period_start_ms, period_end_ms,
+               sweep_count, freq_start_hz, freq_step_hz, num_points, levels_gz
+        FROM spectrum_frames
+        WHERE frame_id = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (frame_id,))
+            row = cur.fetchone()
+    if row is None:
+        return None
+    gz_bytes = bytes(row["levels_gz"])
+    return {
+        "frame_id": row["frame_id"],
+        "station_id": row["station_id"],
+        "period_start_ms": row["period_start_ms"],
+        "period_end_ms": row["period_end_ms"],
+        "sweep_count": row["sweep_count"],
+        "freq_start_hz": row["freq_start_hz"],
+        "freq_step_hz": row["freq_step_hz"],
+        "num_points": row["num_points"],
+        "levels_dbm_b64": base64.b64encode(gz_bytes).decode("ascii"),
+    }
+
+
+# ── task expiry ───────────────────────────────────────────────────────────────
+
+def expire_stale_tasks(timeout_minutes: int = 30) -> int:
+    """
+    Mark tasks that have been stuck in pending/dispatched for more than
+    `timeout_minutes` as 'expired'.  Returns the number of tasks expired.
+    """
+    sql = """
+        UPDATE tasks
+        SET status = 'expired', updated_at = now()
+        WHERE status IN ('pending', 'dispatched')
+          AND created_at < now() - (%s * interval '1 minute')
+        RETURNING task_id
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (timeout_minutes,))
+            expired_ids = [r[0] for r in cur.fetchall()]
+            if expired_ids:
+                placeholders = ",".join(["%s"] * len(expired_ids))
+                cur.execute(
+                    f"""
+                    UPDATE task_stations
+                    SET status = 'expired'
+                    WHERE task_id IN ({placeholders})
+                      AND status IN ('pending', 'dispatched')
+                    """,
+                    expired_ids,
+                )
+    if expired_ids:
+        log.info("Expired %d stale task(s): %s", len(expired_ids), expired_ids)
+    return len(expired_ids)
+
+
+# ── signal_analyses ───────────────────────────────────────────────────────────
+
+def create_analysis(
+    station_id: str,
+    frame_id: int | None,
+    freq_start_hz: float,
+    freq_stop_hz: float,
+    period_start_ms: int,
+    period_end_ms: int,
+    threshold_dbm: float,
+    detections: list,
+    ai_summary: str | None,
+    ai_backend: str | None,
+) -> int:
+    sql = """
+        INSERT INTO signal_analyses
+            (station_id, frame_id, freq_start_hz, freq_stop_hz,
+             period_start_ms, period_end_ms, threshold_dbm,
+             detections, ai_summary, ai_backend)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING analysis_id
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                station_id, frame_id, freq_start_hz, freq_stop_hz,
+                period_start_ms, period_end_ms, threshold_dbm,
+                json.dumps(detections), ai_summary, ai_backend,
+            ))
+            return cur.fetchone()[0]
+
+
+def list_analyses(station_id: str | None = None, limit: int = 100) -> list[dict]:
+    conditions = []
+    params: list = []
+    if station_id:
+        conditions.append("station_id = %s")
+        params.append(station_id)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sql = f"""
+        SELECT analysis_id, station_id, frame_id, freq_start_hz, freq_stop_hz,
+               period_start_ms, period_end_ms, threshold_dbm,
+               detections, ai_summary, ai_backend, status, created_at
+        FROM signal_analyses
+        {where}
+        ORDER BY created_at DESC
+        LIMIT %s
+    """
+    params.append(limit)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_analysis(analysis_id: int) -> dict | None:
+    sql = """
+        SELECT analysis_id, station_id, frame_id, freq_start_hz, freq_stop_hz,
+               period_start_ms, period_end_ms, threshold_dbm,
+               detections, ai_summary, ai_backend, status, created_at
+        FROM signal_analyses
+        WHERE analysis_id = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, (analysis_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def update_analysis_status(analysis_id: int, status: str) -> bool:
+    sql = "UPDATE signal_analyses SET status = %s WHERE analysis_id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (status, analysis_id))
+            return cur.rowcount > 0
+
+
+# ── signal_records ────────────────────────────────────────────────────────────
+
+def list_signal_records(status: str | None = None, limit: int = 200) -> list[dict]:
+    conditions = []
+    params: list = []
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sql = f"""
+        SELECT signal_id, name, freq_center_hz, bandwidth_hz, modulation,
+               service, authority, station_id, first_seen_ms, last_seen_ms,
+               max_dbm, notes, status, created_at
+        FROM signal_records
+        {where}
+        ORDER BY freq_center_hz
+        LIMIT %s
+    """
+    params.append(limit)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def create_signal_record(
+    name: str,
+    freq_center_hz: float,
+    bandwidth_hz: float | None,
+    modulation: str | None,
+    service: str | None,
+    authority: str | None,
+    station_id: str | None,
+    first_seen_ms: int | None,
+    last_seen_ms: int | None,
+    max_dbm: float | None,
+    notes: str | None,
+) -> int:
+    sql = """
+        INSERT INTO signal_records
+            (name, freq_center_hz, bandwidth_hz, modulation, service, authority,
+             station_id, first_seen_ms, last_seen_ms, max_dbm, notes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING signal_id
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                name, freq_center_hz, bandwidth_hz, modulation, service, authority,
+                station_id, first_seen_ms, last_seen_ms, max_dbm, notes,
+            ))
+            return cur.fetchone()[0]
+
+
+def update_signal_record(signal_id: int, **fields) -> bool:
+    allowed = {
+        "name", "freq_center_hz", "bandwidth_hz", "modulation", "service",
+        "authority", "station_id", "first_seen_ms", "last_seen_ms",
+        "max_dbm", "notes", "status",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    sql = f"UPDATE signal_records SET {set_clause} WHERE signal_id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (*updates.values(), signal_id))
+            return cur.rowcount > 0
+
+
+def delete_signal_record(signal_id: int) -> bool:
+    sql = "DELETE FROM signal_records WHERE signal_id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (signal_id,))
+            return cur.rowcount > 0

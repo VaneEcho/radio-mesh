@@ -4,9 +4,11 @@
 
 ---
 
-## 当前阶段：Phase 0–5 全部完成，下一步 Phase 7（历史回放）
+## 当前阶段：Phase 0–8 全部实现，待设备联调
 
 整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
+
+> **架构确认（2026-03-16）：** 系统分两种工作模式 —— **空闲/后台扫描**（1分钟 max-hold 聚合，REST 上传）和 **任务实时流**（1/FPS秒聚合，默认 10fps，WebSocket 推送）。Edge 只做时间维度压缩，从不合并频率 bin；频率聚合（按 band_rules 信道合并）在云端查询时动态计算。
 
 ---
 
@@ -14,14 +16,14 @@
 
 ```
 [██████████] Phase 0  基础框架          ✅ 完成
-[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送）
+[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送 + RSA306B驱动 + 1分钟聚合器）
 [██████████] Phase 2  云端数据接收       ✅ 完成
 [██████████] Phase 3  前端基础           ✅ 完成（站点/频谱/查询/任务/实时）
 [██████████] Phase 4  频率指配工具       ✅ 完成（API + 前端）
-[██████████] Phase 5  批量扫描+实时流    ✅ 完成（任务链路 + 实时频谱 + 瀑布图）
-[░░░░░░░░░░] Phase 6  AI 信号分析        未启动
-[░░░░░░░░░░] Phase 7  历史回放           未启动
-[░░░░░░░░░░] Phase 8  台站信号库         未启动
+[██████████] Phase 5  批量扫描+实时流    ✅ 完成（任务链路 + 实时频谱 + 瀑布图 + 任务过期）
+[██████████] Phase 6  AI 信号分析        ✅ 完成（本地检测 + Claude/OpenAI后端 + 前端）
+[██████████] Phase 7  历史回放           ✅ 完成（快照API + 逐帧播放 + 对比模式）
+[██████████] Phase 8  台站信号库         ✅ 完成（CRUD API + 前端管理页）
 ```
 
 ---
@@ -34,18 +36,6 @@
 - [x] `docs/ARCHITECTURE.md` — 技术架构手册（实际文件结构、API/WS 协议、DB Schema、设计决策）
 - [x] `docs/band_rules.yaml` — 频段规则初始版本（50 条规则，20 MHz–8 GHz，基于工信部令第62号）
 
-### 需求对齐（沟通已确认）
-- [x] 整体两层架构：Edge Agent + Cloud Server
-- [x] Edge 主动连接 Cloud（注册制，便于多站点部署）
-- [x] 设备驱动抽象层设计（兼容多厂商，初期适配 R&S EM550）
-- [x] **首批适配设备**：R&S EM550（第一优先，SCPI over TCP）+ RSA306B（第二，USB）
-- [x] **R&S 设备接口方案**：`RsInstrument` Python 库（官方，纯 Socket，无需 VISA）
-- [x] 全频段扫描：25 kHz 步进，1 分钟聚合包（最大值）上传
-- [x] 实时流帧率控制：Edge 节流，默认 2 fps，可配置，0 = 禁用
-- [x] **前端框架确认**：Vue 3 + Vite + Element Plus + ECharts
-- [x] 数据保留策略：最少保留 3 个月，软件不截断
-- [x] AI 分层处理策略：模板匹配 → 异常检测 → AI 初判 → 人工核实（未来 Phase 6）
-
 ### Phase 0 — 基础框架 ✅
 - [x] 项目目录骨架：`edge/` / `cloud/` / `docs/` / `frontend/` 结构建立
 - [x] Docker Compose 开发环境（cloud + TimescaleDB + frontend）
@@ -56,7 +46,7 @@
 - [x] 设备驱动抽象接口：`edge/drivers/base.py`（`BaseSpectrumDriver` + `SpectrumFrame`）
 - [x] EM550 驱动：`edge/drivers/em550.py`（PSCan 自动分段、IFPAN、FSCan、dBµV→dBm）
 - [x] Mock 驱动：`edge/drivers/mock.py`（仿真噪底 + 8 组预置信号，无需硬件）
-- [x] RSA306B 驱动：`edge/drivers/rsa306b.py`（占位，接口定义完毕，实现待补）
+- [x] **RSA306B 驱动**：`edge/drivers/rsa306b.py`（tekrsa-api-wrap，USB，40MHz分段拼接，完整实现）
 - [x] 全频段扫描主循环：`edge/scanner.py`（SIGINT/SIGTERM 优雅退出）
 - [x] 1 分钟聚合器：`edge/aggregator.py`（按窗口合并，每 bin 取最大值）
 - [x] 聚合包上传：`edge/uploader.py`（独立线程，Queue，断网本地落文件）
@@ -64,72 +54,75 @@
 - [x] 任务执行器：`edge/scanner.py`（`_drain_tasks`，band_scan / channel_scan / if_analysis）
 
 ### Phase 2 — 云端数据接收与存储 ✅
-- [x] FastAPI 应用骨架：`cloud/main.py`（路由挂载、CORS、lifespan）
+- [x] FastAPI 应用骨架：`cloud/main.py`（路由挂载、CORS、lifespan、**任务过期后台循环**）
 - [x] 聚合包接收 API：`cloud/routers/ingest.py`（`POST /api/v1/spectrum/bundle`）
-- [x] 数据查询 API：`cloud/routers/query.py`（历史帧列表 + 频点时间轴）
+- [x] 数据查询 API：`cloud/routers/query.py`（历史帧列表 + 频点时间轴 + **快照API**）
 - [x] 频段规则 API：`cloud/routers/band_rules.py`（增删改查）
 - [x] 站点注册与心跳 API：`cloud/routers/stations.py`（注册 + WS 端点）
-- [x] DB CRUD 函数：`cloud/db.py`（连接池 + 全部 CRUD）
-- [x] Dockerfile + 依赖完整
+- [x] DB CRUD 函数：`cloud/db.py`（连接池 + 全部 CRUD + **信号分析表 + 信号库表**）
+- [x] **任务过期**：`db.expire_stale_tasks()`，每 5 分钟扫描 pending/dispatched 超时 30 分钟的任务
 
 ### Phase 3 — 前端基础 ✅
-- [x] 项目初始化：`frontend/`（Vue 3 + Vite + Element Plus + ECharts）
-- [x] 站点总览仪表盘（`StationsView.vue`，在线/离线卡片，10s 自动刷新）
-- [x] 历史频谱查看页（`SpectrumView.vue`，ECharts 折线图，帧时间线浏览）
-- [x] 频段规则管理页（`BandRulesView.vue`，增删改查）
-- [x] 频点历史查询（`FreqQueryView.vue`，多站点排名 + 时间轴，max-pool 概览 + 原始分辨率缩放）
-- [x] Nginx 反向代理（`/api` → cloud:8000，含 WebSocket，SPA 回退）
-- [x] 前端 Docker 多阶段构建；docker-compose 三服务全栈
+- [x] 站点总览仪表盘（`StationsView.vue`）
+- [x] 历史频谱查看页（`SpectrumView.vue`）
+- [x] 频段规则管理页（`BandRulesView.vue`）
+- [x] 频点历史查询（`FreqQueryView.vue`）
+- [x] Nginx 反向代理 + Docker 多阶段构建
 
 ### Phase 4 — 频率指配工具 ✅
-- [x] 后端 DB 层：`query_channel_max_levels()` — 解压历史帧，按信道宽度分组，计算每信道最大电平
-- [x] `POST /api/v1/freq-assign` — 输入频段+信道宽度+阈值+观测窗口 → 返回全信道占用表
-- [x] `FreqAssignView.vue` — 站点选择、频段+信道宽度预设（10 种）、阈值滑块、观测窗口选择
-- [x] ECharts 柱状图概览（绿=空闲/红=占用，阈值标注线）
-- [x] 信道明细表：全部/空闲/占用/无数据 标签页过滤 + 频率搜索 + CSV 导出
+- [x] `POST /api/v1/freq-assign` + `FreqAssignView.vue`
 
 ### Phase 5 — 任务下发 + 实时流 ✅
-- [x] `cloud/connection_manager.py` — Edge WS 连接注册中心（1:1 per station）
-- [x] `cloud/routers/tasks.py` — 任务增删改查 + Cloud→Edge 下发（WS push）
-- [x] `cloud/db.py` — tasks / task_stations 表及 CRUD 函数
-- [x] `edge/heartbeat.py` — 接收 task 消息，task_ack 确认，投入 task_queue；`send_frame()` 实时流推送（帧率节流 + threading.Lock）
-- [x] `edge/scanner.py` — `_drain_tasks()` 每轮扫前优先执行，band_scan / channel_scan / if_analysis 结果回报云端；每扫一帧调用 `heartbeat.send_frame()`
-- [x] `TaskView.vue` — 任务控制台：创建/列表/详情/内联频谱预览（SpectrumMini 组件）
-- [x] `cloud/stream_manager.py` — 前端订阅者注册中心（1:N per station，async broadcast）
-- [x] `cloud/routers/stream.py` — `WS /api/v1/stream/{station_id}/ws` 前端订阅端点
-- [x] `cloud/routers/stations.py` — 转发 Edge stream_frame 消息给所有订阅前端
-- [x] `RealtimeView.vue` — 实时频谱折线图 + 60 帧瀑布图热图，帧计数 + fps 显示
+- [x] `cloud/connection_manager.py` + `cloud/routers/tasks.py`
+- [x] `cloud/stream_manager.py` + `cloud/routers/stream.py`
+- [x] `RealtimeView.vue`（实时频谱 + 瀑布图）
+- [x] **任务过期**：stuck 任务自动过期，`updated_at` + `status=expired`
+
+### Phase 7 — 历史回放 ✅（新完成）
+- [x] `GET /api/v1/spectrum/snapshots` — 查询时间段内帧元数据列表（不含数据blob）
+- [x] `GET /api/v1/spectrum/snapshots/{frame_id}` — 获取单帧完整数据
+- [x] `PlaybackView.vue` — 站点/时间选择、帧列表、ECharts 频谱图
+- [x] 逐帧播放控制（上/下一帧、自动播放、速度选择）
+- [x] **对比模式**：选 A/B 两帧叠加显示，不同颜色区分
+
+### Phase 6 — AI 信号分析 ✅（新完成）
+- [x] 本地信号检测：`analysis.py::_detect_signals()` — 连续超阈值段提取，3dB带宽估算，band_rules 归属查找
+- [x] AI 后端：Claude API（`claude-sonnet-4-6`）+ OpenAI API（`gpt-4o-mini`）+ 本地文本描述
+- [x] `POST /api/v1/analysis` — 支持单帧或时间范围，聚合多帧取最大值后分析
+- [x] `GET /api/v1/analysis` + `GET /api/v1/analysis/{id}` + `PATCH /api/v1/analysis/{id}`
+- [x] DB：`signal_analyses` 表（分析结果持久化，status 工作流：new/confirmed/dismissed）
+- [x] `AnalysisView.vue` — 新建分析表单、分析列表、信号详情表、AI 报告展示
+
+### Phase 8 — 台站信号库 ✅（新完成）
+- [x] DB：`signal_records` 表（按频率索引，支持 active/archived 状态）
+- [x] `GET/POST/PUT/PATCH/DELETE /api/v1/signals` — 完整 CRUD
+- [x] `SignalLibraryView.vue` — 搜索/过滤、分页表格、创建/编辑弹窗、归档/删除操作
 
 ---
 
-## 待开发
+## 待完成
 
-### 需求对齐（待进一步讨论）
-- [ ] 获取 EM550 编程手册 SCPI 命令集完整版（联系 R&S 销售）
-- [ ] 台站信号库初始数据来源（空库 or 已有历史数据可导入）
-- [ ] `band_rules.yaml` 中省/地方权限字段的细化
+> 详细任务分解见 **`NEXT.md`**（优先级、实现步骤、联调清单）
 
-### Phase 7 — 历史回放（推荐下一步）
-- [ ] `GET /api/v1/spectrum/snapshots`：给定时间点，返回最近一帧完整频谱
-- [ ] `HistoryView.vue`：电平时间轴折线图，点击时刻弹出历史频谱快照
-- [ ] 多站点叠加展示（同一频率在不同站点的历史电平对比）
+### Phase 9 — 音频解调流（❌ 未实现）
+- [ ] EM550 Annex E UDP 音频接收（Edge `audio.py`）
+- [ ] 软件解调降级方案（Edge `demod.py`，scipy）
+- [ ] Cloud 音频 WebSocket 端点（`audio.py` + `audio_manager.py`）
+- [ ] 前端音频播放器（Web Audio API，与频谱帧时间戳对齐）
 
-### Phase 6 — AI 信号分析
-- [ ] 模板匹配初筛模块（本地规则，不调 AI）
-- [ ] 异常检测规则引擎（带宽异常、电平基线偏离、频偏）
-- [ ] 频谱图 / 瀑布图截图提取（送 AI 模型）
-- [ ] AI 多后端接口层（统一输入格式，支持 Qwen / OpenAI / Gemini / Kimi 切换）
-- [ ] 本地 Qwen2.5-VL 3B 接入（调试用）
-- [ ] 人工核实工作流（待核实队列、确认/修正界面）
+### Phase 10 — 工程化加固（❌ 未实现）
+- [ ] 结构化日志（JSON 格式 + 按天滚动，Edge 和 Cloud 两侧）
+- [ ] Redis pub/sub 替换 stream_manager 内存结构（支持多 Worker）
+- [ ] 数据保留策略（后台循环定时清理 >90 天历史帧）
+- [ ] API 鉴权完善（Bearer Token 实际校验，当前空 token 直通）
 
-### Phase 8 — 台站信号库
-- [ ] `signal_records` 表设计（频率、带宽、调制方式、归属台站）
-- [ ] 信号创建 / 更新 / 查询 API
-- [ ] 与 AI 分析结果关联
-- [ ] 库管理前端页面（筛选、详情、状态流转、历史时间线）
+### Phase 11 — 部署文档（❌ 未写）
+- [ ] `docs/DEPLOYMENT.md`（Docker 部署、systemd Edge 服务、Nginx SSL、多站点指南）
 
-### Phase 1 补全（低优先级）
-- [ ] 频段合并预处理器（读取 band_rules.yaml，按信道聚合后上报，当前为原始 25kHz 粒度）
+### 联调阶段（⏳ 等待硬件）
+- [ ] EM550 实机验证（SCPI 参数、电平单位转换、IFPAN 选件确认）
+- [ ] RSA306B 实机验证（libRSA_API.so 路径、udev rules、分段拼接验证）
+- [ ] 端对端数据链路联调：Edge → Cloud → 前端全链路
 
 ---
 
@@ -138,12 +131,12 @@
 | 日期 | 版本 | 变更内容 |
 |------|------|----------|
 | 2026-03-13 | v0.1 | 初始 PLAN.md，Phase 0–6 任务分解 |
-| 2026-03-13 | v0.2 | 新增 REQUIREMENTS.md；补充设备抽象层、帧率控制、AI 分层策略、历史回放、台站信号库、存储设计 |
-| 2026-03-13 | v0.3 | 新增 PROGRESS.md；拆分 Phase 7（历史回放）和 Phase 8（信号库）为独立阶段 |
-| 2026-03-13 | v0.4 | 确认设备（EM550 + RSA306B）、AI 多后端策略、数据保留 3 个月、前端 Vue 3 + ECharts |
-| 2026-03-13 | v0.5 | R&S EM550 接口方案（RsInstrument+SCPI）；band_rules.yaml（50条规则，20MHz–8GHz） |
-| 2026-03-13 | v0.6 | Phase 1 核心代码完成（scanner/aggregator/uploader/em550/mock）；Phase 2 API 骨架（FastAPI + ingest/query/band_rules） |
-| 2026-03-13 | v0.7 | Phase 0 完成：stations 表 + 站点注册 REST API + WebSocket 心跳端点；edge/heartbeat.py |
-| 2026-03-13 | v0.8 | Phase 3 基础完成：frontend/ Vue 3（站点总览/频谱查看/频段规则）；Nginx Docker；docker-compose 三服务 |
-| 2026-03-14 | v0.9 | Phase 4 完成（freq-assign API + FreqAssignView）；Phase 5 任务链路（connection_manager/tasks/heartbeat/scanner 任务执行）；FreqQueryView；TaskView；修复驱动调用参数 |
-| 2026-03-16 | v1.0 | Phase 5 实时流完成（stream_manager/stream router/heartbeat.send_frame/RealtimeView 瀑布图）；新增 docs/ARCHITECTURE.md；README/PROGRESS 全面更新 |
+| 2026-03-13 | v0.2 | 新增 REQUIREMENTS.md；补充设备抽象层等 |
+| 2026-03-13 | v0.3 | 新增 PROGRESS.md；拆分 Phase 7/8 |
+| 2026-03-13 | v0.4–0.5 | 确认设备/AI策略/前端框架/band_rules |
+| 2026-03-13 | v0.6–0.7 | Phase 1 核心代码 + Phase 2 API骨架 + Phase 0 WS心跳 |
+| 2026-03-13 | v0.8 | Phase 3 前端基础 |
+| 2026-03-14 | v0.9 | Phase 4 freq-assign + Phase 5 任务链路 |
+| 2026-03-16 | v1.0 | Phase 5 实时流完成；docs/ARCHITECTURE.md |
+| 2026-03-16 | v1.1 | **Phase 6/7/8 全部实现**：历史回放、AI信号分析、信号库；RSA306B驱动完整实现；任务过期逻辑 |
+| 2026-03-16 | v1.2 | 架构修正：确认Edge只做时间压缩，移除边缘侧频率合并（preprocessor.py）；文档更新（PLAN/ARCHITECTURE/REQUIREMENTS/PROGRESS）；实时流默认帧率改为10fps；音频×频谱时间对齐要求写入需求文档 |

@@ -209,3 +209,107 @@ class FreqAssignResponse(BaseModel):
     total_channels: int
     free_channels: int
     channels: list[ChannelEntry]
+
+
+# ── Historical playback snapshots ─────────────────────────────────────────────
+
+class SnapshotMeta(BaseModel):
+    """Frame metadata without the data blob — for timeline listing."""
+    frame_id: int
+    station_id: str
+    period_start_ms: int
+    period_end_ms: int
+    sweep_count: int
+    freq_start_hz: float
+    freq_step_hz: float
+    num_points: int
+
+
+class SnapshotListResponse(BaseModel):
+    station_id: str
+    start_ms: int
+    end_ms: int
+    snapshots: list[SnapshotMeta]
+    total: int
+
+
+class SnapshotDetail(SnapshotMeta):
+    """Full frame — includes base64(gzip(float32[])) data blob."""
+    levels_dbm_b64: str
+
+
+# ── Signal analysis ───────────────────────────────────────────────────────────
+
+class SignalDetection(BaseModel):
+    freq_start_hz: float
+    freq_stop_hz: float
+    freq_center_hz: float
+    bandwidth_hz: float
+    peak_dbm: float
+    band_name: Optional[str] = None
+
+
+class AnalysisRequest(BaseModel):
+    station_id: str
+    frame_id: Optional[int] = None
+    freq_start_hz: Optional[float] = None   # if frame_id not given, use time range
+    freq_stop_hz: Optional[float] = None
+    period_start_ms: Optional[int] = None
+    period_end_ms: Optional[int] = None
+    threshold_dbm: float = Field(default=-90.0)
+    ai_backend: Optional[str] = None        # 'claude' / 'openai' / None = local only
+    ai_api_key: Optional[str] = None
+
+
+class AnalysisOut(BaseModel):
+    analysis_id: int
+    station_id: str
+    frame_id: Optional[int] = None
+    freq_start_hz: float
+    freq_stop_hz: float
+    period_start_ms: int
+    period_end_ms: int
+    threshold_dbm: float
+    detections: list[SignalDetection]
+    ai_summary: Optional[str] = None
+    ai_backend: Optional[str] = None
+    status: str
+    created_at: str
+
+
+class AnalysisListResponse(BaseModel):
+    analyses: list[AnalysisOut]
+    total: int
+
+
+class AnalysisStatusUpdate(BaseModel):
+    status: str   # confirmed / dismissed / new
+
+
+# ── Signal library ────────────────────────────────────────────────────────────
+
+class SignalRecordIn(BaseModel):
+    name: str
+    freq_center_hz: float
+    bandwidth_hz: Optional[float] = None
+    modulation: Optional[str] = None
+    service: Optional[str] = None
+    authority: Optional[str] = None
+    station_id: Optional[str] = None
+    first_seen_ms: Optional[int] = None
+    last_seen_ms: Optional[int] = None
+    max_dbm: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class SignalRecordOut(SignalRecordIn):
+    signal_id: int
+    status: str
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class SignalRecordListResponse(BaseModel):
+    records: list[SignalRecordOut]
+    total: int
