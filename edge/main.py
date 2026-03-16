@@ -95,7 +95,7 @@ def main() -> None:
     # ── Scanner ───────────────────────────────────────────────────────────
     from .scanner import Scanner
 
-    scanner = Scanner(cfg=cfg, uploader=uploader, task_queue=task_queue)
+    scanner = Scanner(cfg=cfg, uploader=uploader, task_queue=task_queue, heartbeat=heartbeat)
 
     log.info("Starting scan loop …  (Ctrl-C to stop)")
     try:

@@ -49,6 +49,12 @@
           </svg>
           <span>任务下发</span>
         </router-link>
+        <router-link to="/realtime" class="nav-item" :class="{ active: activeMenu === '/realtime' }">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="2 12 6 6 10 14 14 8 18 14 22 9"/>
+          </svg>
+          <span>实时频谱</span>
+        </router-link>
         <router-link to="/band-rules" class="nav-item" :class="{ active: activeMenu === '/band-rules' }">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>
@@ -58,7 +64,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="version-badge">v0.4</div>
+        <div class="version-badge">v0.5</div>
       </div>
     </aside>
 

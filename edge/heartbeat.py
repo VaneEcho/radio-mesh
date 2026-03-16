@@ -66,10 +66,17 @@ class Heartbeat:
         self._base_url: str = cloud_cfg.get("url", "http://localhost:8000").rstrip("/")
         self._token: str = cloud_cfg.get("token", "")
 
+        # Real-time stream: frames per second cap (0 = disabled)
+        stream_fps: float = float(cloud_cfg.get("stream_fps", 2.0))
+        self._stream_enabled: bool = self._enabled and stream_fps > 0
+        self._frame_interval: float = 1.0 / stream_fps if stream_fps > 0 else float("inf")
+        self._last_frame_ts: float = 0.0
+        self._send_lock = threading.Lock()
+
         self._task_queue = task_queue
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._ws: Optional[websocket.WebSocket] = None  # for sending task_ack
+        self._ws: Optional[websocket.WebSocket] = None  # for sending task_ack / stream frames
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -85,6 +92,39 @@ class Heartbeat:
 
     def stop(self) -> None:
         self._stop_event.set()
+
+    def send_frame(self, b64: str, meta: dict) -> None:
+        """
+        Push a live spectrum frame to Cloud over the heartbeat WebSocket.
+
+        Thread-safe; may be called from the scanner thread.  Frames are
+        silently dropped when:
+          - streaming is disabled (stream_fps=0 or cloud.enabled=false)
+          - no WebSocket connection is active
+          - the rate limit (stream_fps) would be exceeded
+        """
+        if not self._stream_enabled:
+            return
+        now = time.monotonic()
+        if now - self._last_frame_ts < self._frame_interval:
+            return  # rate-limit: drop this frame
+        self._last_frame_ts = now
+
+        ws = self._ws
+        if ws is None:
+            return
+        payload = json.dumps({
+            "type":       "stream_frame",
+            "station_id": self._station_id,
+            "b64":        b64,
+            "meta":       meta,
+        })
+        with self._send_lock:
+            try:
+                ws.send(payload)
+                log.debug("stream_frame sent (%d bytes)", len(payload))
+            except Exception as exc:
+                log.debug("stream_frame send failed: %s", exc)
 
     # ── Internal ──────────────────────────────────────────────────────────────
 

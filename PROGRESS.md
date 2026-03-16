@@ -4,7 +4,7 @@
 
 ---
 
-## 当前阶段：Phase 4 完成，Phase 5 任务链路完成，下一步历史回放（Phase 7）
+## 当前阶段：Phase 5 实时流完成，下一步历史回放（Phase 7）
 
 整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
 
@@ -14,11 +14,11 @@
 
 ```
 [██████████] Phase 0  基础框架          ✅ 完成
-[█████████░] Phase 1  边缘扫描引擎       核心+任务执行完成，实时流待实现
+[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送）
 [██████████] Phase 2  云端数据接收       ✅ 完成
-[█████████░] Phase 3  前端基础           基础+频点查询+任务控制台完成
+[██████████] Phase 3  前端基础           ✅ 完成（站点/频谱/任务/实时）
 [██████████] Phase 4  频率指配工具       ✅ 完成（API + 前端）
-[████░░░░░░] Phase 5  批量扫描+实时流    任务下发+任务控制台完成，流式推送待实现
+[██████████] Phase 5  批量扫描+实时流    ✅ 完成（任务链路 + 实时频谱 + 瀑布图）
 [░░░░░░░░░░] Phase 6  AI 信号分析        未启动
 [░░░░░░░░░░] Phase 7  历史回放           未启动
 [░░░░░░░░░░] Phase 8  台站信号库         未启动
@@ -114,16 +114,17 @@
 - [x] ECharts 柱状图概览（绿=空闲/红=占用，阈值标注线）
 - [x] 信道明细表：全部/空闲/占用/无数据 标签页过滤 + 频率搜索 + CSV 导出
 
-### Phase 5 — 任务下发 + 实时流
+### Phase 5 — 任务下发 + 实时流 ✅
 - [x] `cloud/connection_manager.py` — WebSocket 连接注册中心
 - [x] `cloud/routers/tasks.py` — 任务增删改查 + Cloud→Edge 下发
 - [x] `cloud/db.py` — tasks / task_stations 表，CRUD 函数
-- [x] `edge/heartbeat.py` — 接收 Cloud 推送的 task 消息，task_ack 确认，投入 task_queue
-- [x] `edge/scanner.py` — drain_tasks() 每轮扫前优先执行，支持 band_scan / channel_scan / if_analysis，结果回报云端
-- [ ] 任务控制台前端（`TaskView.vue`，创建/查看/结果频谱）
-- [ ] 实时流发送（Edge WebSocket push，帧率节流）
-- [ ] 云端实时流代理（转发给前端 WebSocket）
-- [ ] 前端实时频谱图 / 瀑布图
+- [x] `edge/heartbeat.py` — 接收 Cloud 推送的 task 消息，task_ack 确认，投入 task_queue；`send_frame()` 带帧率限制的实时流推送
+- [x] `edge/scanner.py` — drain_tasks() 每轮扫前优先执行，支持 band_scan / channel_scan / if_analysis，结果回报云端；每扫一帧调用 `heartbeat.send_frame()`
+- [x] `TaskView.vue` — 任务控制台：创建/列表/详情/内联频谱预览
+- [x] `cloud/stream_manager.py` — 前端订阅者注册中心（1:N per station）
+- [x] `cloud/routers/stream.py` — `WS /api/v1/stream/{station_id}/ws` 前端订阅端点
+- [x] `cloud/routers/stations.py` — 转发 Edge stream_frame 消息给所有订阅前端
+- [x] `RealtimeView.vue` — 实时频谱折线图 + 瀑布图热图，帧计数 + fps 显示
 
 ### Phase 6 — AI 信号分析
 - [ ] 频段模板配置（信道带宽规范化定义）

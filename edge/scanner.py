@@ -38,6 +38,7 @@ import numpy as np
 
 from .aggregator import Aggregator
 from .drivers import EM550Driver, MockDriver, BaseSpectrumDriver
+from .heartbeat import Heartbeat
 from .models import SpectrumBundle
 from .uploader import Uploader
 
@@ -93,10 +94,12 @@ class Scanner:
         cfg: dict,
         uploader: Uploader,
         task_queue: Optional[queue.Queue] = None,
+        heartbeat: Optional[Heartbeat] = None,
     ) -> None:
         self._cfg = cfg
         self._uploader = uploader
         self._task_queue = task_queue or queue.Queue()
+        self._heartbeat = heartbeat
 
         station_id = cfg["station"]["id"]
         agg_interval = float(cfg.get("aggregation", {}).get("interval_s", 60.0))
@@ -277,6 +280,11 @@ class Scanner:
 
         if self._dump_raw:
             _dump_frame(frame, self._cfg.get("debug", {}).get("output_dir", "./output"))
+
+        # Live streaming: push frame to Cloud (rate-limited inside send_frame)
+        if self._heartbeat is not None:
+            b64, meta = _encode_frame(frame)
+            self._heartbeat.send_frame(b64, meta)
 
         self._aggregator.update(frame)
         self._aggregator.tick()
