@@ -100,18 +100,29 @@
 
 ---
 
-## 待完成（联调阶段）
+## 待完成
 
-### 设备联调（接入真实硬件后修bug）
-- [ ] EM550 实机验证（SCPI 参数、电平单位转换确认）
-- [ ] RSA306B 实机验证（tekrsa-api-wrap API 细节可能需微调）
-- [ ] 联调完整数据链路：Edge → Cloud → 前端
+> 详细任务分解见 **`NEXT.md`**（优先级、实现步骤、联调清单）
 
-### 工程化（可按需推进）
-- [ ] 多 Worker 支持：stream_manager 改用 Redis pub/sub（当前单进程内存共享）
-- [ ] 数据保留策略：定时清理 >3 个月历史帧
-- [ ] Edge 日志：结构化日志 + 按天滚动
-- [ ] Prometheus 指标暴露（可选）
+### Phase 9 — 音频解调流（❌ 未实现）
+- [ ] EM550 Annex E UDP 音频接收（Edge `audio.py`）
+- [ ] 软件解调降级方案（Edge `demod.py`，scipy）
+- [ ] Cloud 音频 WebSocket 端点（`audio.py` + `audio_manager.py`）
+- [ ] 前端音频播放器（Web Audio API，与频谱帧时间戳对齐）
+
+### Phase 10 — 工程化加固（❌ 未实现）
+- [ ] 结构化日志（JSON 格式 + 按天滚动，Edge 和 Cloud 两侧）
+- [ ] Redis pub/sub 替换 stream_manager 内存结构（支持多 Worker）
+- [ ] 数据保留策略（后台循环定时清理 >90 天历史帧）
+- [ ] API 鉴权完善（Bearer Token 实际校验，当前空 token 直通）
+
+### Phase 11 — 部署文档（❌ 未写）
+- [ ] `docs/DEPLOYMENT.md`（Docker 部署、systemd Edge 服务、Nginx SSL、多站点指南）
+
+### 联调阶段（⏳ 等待硬件）
+- [ ] EM550 实机验证（SCPI 参数、电平单位转换、IFPAN 选件确认）
+- [ ] RSA306B 实机验证（libRSA_API.so 路径、udev rules、分段拼接验证）
+- [ ] 端对端数据链路联调：Edge → Cloud → 前端全链路
 
 ---
 
