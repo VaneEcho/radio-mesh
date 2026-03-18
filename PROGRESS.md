@@ -4,7 +4,7 @@
 
 ---
 
-## 当前阶段：Phase 0–8 全部实现，待设备联调
+## 当前阶段：Phase 9–11 部分实现，Phase 10.2（Redis）待实现，联调待硬件
 
 整体策略：**先跑通主干数据链路，再逐步补全各功能模块。**
 
@@ -15,15 +15,18 @@
 ## 整体进度概览
 
 ```
-[██████████] Phase 0  基础框架          ✅ 完成
-[██████████] Phase 1  边缘扫描引擎       ✅ 完成（含实时流推送 + RSA306B驱动 + 1分钟聚合器）
-[██████████] Phase 2  云端数据接收       ✅ 完成
-[██████████] Phase 3  前端基础           ✅ 完成（站点/频谱/查询/任务/实时）
-[██████████] Phase 4  频率指配工具       ✅ 完成（API + 前端）
-[██████████] Phase 5  批量扫描+实时流    ✅ 完成（任务链路 + 实时频谱 + 瀑布图 + 任务过期）
-[██████████] Phase 6  AI 信号分析        ✅ 完成（本地检测 + Claude/OpenAI后端 + 前端）
-[██████████] Phase 7  历史回放           ✅ 完成（快照API + 逐帧播放 + 对比模式）
-[██████████] Phase 8  台站信号库         ✅ 完成（CRUD API + 前端管理页）
+[██████████] Phase 0   基础框架          ✅ 完成
+[██████████] Phase 1   边缘扫描引擎      ✅ 完成（含实时流推送 + RSA306B驱动 + 1分钟聚合器）
+[██████████] Phase 2   云端数据接收      ✅ 完成
+[██████████] Phase 3   前端基础          ✅ 完成（站点/频谱/查询/任务/实时）
+[██████████] Phase 4   频率指配工具      ✅ 完成（API + 前端）
+[██████████] Phase 5   批量扫描+实时流   ✅ 完成（任务链路 + 实时频谱 + 瀑布图 + 任务过期）
+[██████████] Phase 6   AI 信号分析       ✅ 完成（本地检测 + Claude/OpenAI后端 + 前端）
+[██████████] Phase 7   历史回放          ✅ 完成（快照API + 逐帧播放 + 对比模式）
+[██████████] Phase 8   台站信号库        ✅ 完成（CRUD API + 前端管理页）
+[████████░░] Phase 9   音频解调流        🔶 部分完成（Cloud WS + 前端播放器已实现；Edge硬件路径等设备）
+[█████████░] Phase 10  工程化加固        🔶 部分完成（日志/保留/鉴权已做；Redis待实现）
+[██████████] Phase 11  部署文档          ✅ 完成（docs/DEPLOYMENT.md）
 ```
 
 ---
@@ -104,20 +107,27 @@
 
 > 详细任务分解见 **`NEXT.md`**（优先级、实现步骤、联调清单）
 
-### Phase 9 — 音频解调流（❌ 未实现）
-- [ ] EM550 Annex E UDP 音频接收（Edge `audio.py`）
-- [ ] 软件解调降级方案（Edge `demod.py`，scipy）
-- [ ] Cloud 音频 WebSocket 端点（`audio.py` + `audio_manager.py`）
-- [ ] 前端音频播放器（Web Audio API，与频谱帧时间戳对齐）
+### Phase 9 — 音频解调流（✅ Edge + Cloud + Frontend 全链路完成）
+- [x] Cloud 音频 WebSocket 端点（`cloud/audio_manager.py` + `cloud/routers/audio.py`）
+- [x] Cloud stations WS 识别并转发 `audio_chunk` 消息
+- [x] 前端音频播放器（`RealtimeView.vue`，Web Audio API，时间戳对齐，音量控制）
+- [x] Edge `edge/demod.py`：软件解调（FM/AM/USB/LSB/CW，numpy + scipy，含 get_optimal_iq_sample_rate）
+- [x] Edge `edge/drivers/rsa306b.py::if_analysis_iq()`：RSA306B IQ 数据采集，返回 complex64 + 频谱帧
+- [x] Edge `edge/audio.py`：AudioStreamer 双模式（hardware=UDP/software=IQ+demod），scanner.driver 懒加载
+- [x] Edge `edge/drivers/em550.py::start_audio_stream()`/`stop_audio_stream()`：Annex E UDP 控制
+- [x] Edge `edge/heartbeat.py::send_audio_chunk()`：audio_chunk WS 消息发送；`send_frame()` 加时间戳
+- [x] Edge `edge/main.py`：AudioStreamer 启动/停止集成
+- [x] `edge/config.yaml.template`：audio 配置节
+- [x] `requirements.txt`：加 scipy
 
-### Phase 10 — 工程化加固（❌ 未实现）
-- [ ] 结构化日志（JSON 格式 + 按天滚动，Edge 和 Cloud 两侧）
-- [ ] Redis pub/sub 替换 stream_manager 内存结构（支持多 Worker）
-- [ ] 数据保留策略（后台循环定时清理 >90 天历史帧）
-- [ ] API 鉴权完善（Bearer Token 实际校验，当前空 token 直通）
+### Phase 10 — 工程化加固（✅ 全部完成）
+- [x] 结构化日志（`edge/logger.py` JSON 格式 + 按天滚动；`cloud/main.py` 同步更新）
+- [x] 数据保留策略（`cloud/db.py::delete_old_frames()` + `cloud/main.py::_retention_loop()`，`DATA_RETENTION_DAYS` 环境变量）
+- [x] API 鉴权完善（Bearer Token 实际校验，区分 missing/invalid，返回 WWW-Authenticate header）
+- [x] Redis pub/sub 双后端（`cloud/stream_manager.py` + `cloud/audio_manager.py` 支持 `STREAM_BACKEND=redis|memory`；docker-compose 加 Redis 服务）
 
-### Phase 11 — 部署文档（❌ 未写）
-- [ ] `docs/DEPLOYMENT.md`（Docker 部署、systemd Edge 服务、Nginx SSL、多站点指南）
+### Phase 11 — 部署文档（✅ 完成）
+- [x] `docs/DEPLOYMENT.md`（Docker 部署、systemd Edge 服务、Nginx SSL、设备连接、多站点指南、故障排查）
 
 ### 联调阶段（⏳ 等待硬件）
 - [ ] EM550 实机验证（SCPI 参数、电平单位转换、IFPAN 选件确认）
@@ -140,3 +150,5 @@
 | 2026-03-16 | v1.0 | Phase 5 实时流完成；docs/ARCHITECTURE.md |
 | 2026-03-16 | v1.1 | **Phase 6/7/8 全部实现**：历史回放、AI信号分析、信号库；RSA306B驱动完整实现；任务过期逻辑 |
 | 2026-03-16 | v1.2 | 架构修正：确认Edge只做时间压缩，移除边缘侧频率合并（preprocessor.py）；文档更新（PLAN/ARCHITECTURE/REQUIREMENTS/PROGRESS）；实时流默认帧率改为10fps；音频×频谱时间对齐要求写入需求文档 |
+| 2026-03-16 | v1.3 | Phase 9/10/11 部分实现：结构化JSON日志（edge+cloud）、数据保留策略、API鉴权加固、Cloud音频WebSocket（audio_manager+router）、前端音频播放器（Web Audio API+时间戳对齐）、DEPLOYMENT.md部署文档；CLAUDE.md创建+从demo原型提炼产品愿景 |
+| 2026-03-16 | v1.4 | Phase 9/10 全部完成：软件解调器（demod.py FM/AM/USB/LSB）、RSA306B IQ采集（if_analysis_iq）、AudioStreamer双模式（hardware/software）、EM550 Annex E控制、heartbeat音频发送、Redis pub/sub双后端（stream_manager+audio_manager）、docker-compose加Redis、requirements.txt加scipy |

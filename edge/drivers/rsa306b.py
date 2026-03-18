@@ -281,6 +281,111 @@ class RSA306BDriver(BaseSpectrumDriver):
             driver="rsa306b-ch",
         )
 
+    def if_analysis_iq(
+        self,
+        center_hz: float,
+        span_hz: float,
+        duration_s: float = 0.1,
+        station_id: str = "",
+        task_id: str = "",
+    ) -> tuple["SpectrumFrame", np.ndarray, float]:
+        """
+        Narrow-band IQ capture centred on center_hz.
+
+        Returns a tuple of:
+          - ``SpectrumFrame``  — spectrum (power vs frequency) for display
+          - ``iq_samples``     — complex64 numpy array of baseband IQ samples
+          - ``sample_rate_hz`` — IQ sample rate in Hz
+
+        The IQ samples can be passed directly to ``edge.demod.demodulate()``
+        for software AM/FM/SSB demodulation.
+
+        Parameters
+        ----------
+        center_hz:  Centre frequency in Hz.
+        span_hz:    Capture bandwidth in Hz (clipped to 40 MHz max).
+        duration_s: IQ capture duration in seconds (default 0.1 s = 100 ms).
+        """
+        self._require_connected()
+        rsa = self._rsa
+        span_hz = min(span_hz, _MAX_BW_HZ)
+
+        sample_rate = span_hz  # RSA306B: IQ sample rate == span in Hz (approx)
+        record_length = max(1, int(sample_rate * duration_s))
+
+        log.debug(
+            "RSA306B IQ capture: centre=%.3f MHz span=%.1f kHz "
+            "dur=%.3f s → %d samples",
+            center_hz / 1e6, span_hz / 1e3, duration_s, record_length,
+        )
+
+        rsa.CONFIG_SetCenterFreq(float(center_hz))
+        rsa.CONFIG_SetReferenceLevel(self._ref_level_dbm)
+
+        # Configure IQ block acquisition
+        rsa.IQBLK_SetIQBandwidth(float(span_hz))
+        rsa.IQBLK_SetIQRecordLength(record_length)
+
+        rsa.DEVICE_Run()
+        rsa.IQBLK_AcquireIQData()
+
+        ready = rsa.IQBLK_WaitForIQDataReady(_WAIT_TIMEOUT_MS)
+        if not ready:
+            log.warning(
+                "RSA306B: IQ data not ready after %d ms for centre=%.3f MHz",
+                _WAIT_TIMEOUT_MS, center_hz / 1e6,
+            )
+            # Return empty arrays
+            empty_frame = SpectrumFrame(
+                station_id=station_id,
+                timestamp_ms=SpectrumFrame.now_ms(),
+                freq_start_hz=float(center_hz - span_hz / 2),
+                freq_step_hz=float(span_hz / self._trace_length),
+                levels_dbm=np.full(self._trace_length, np.nan, dtype=np.float32),
+                task_id=task_id,
+                driver="rsa306b-iq",
+            )
+            rsa.DEVICE_Stop()
+            return empty_frame, np.array([], dtype=np.complex64), float(sample_rate)
+
+        # Retrieve IQ samples (interleaved I/Q float32)
+        iq_data, actual_len = rsa.IQBLK_GetIQData(record_length)
+        rsa.DEVICE_Stop()
+
+        # Convert to complex64 array
+        iq_flat = np.array(iq_data[:actual_len * 2], dtype=np.float32)
+        iq_complex = iq_flat[0::2] + 1j * iq_flat[1::2]
+        iq_complex = iq_complex.astype(np.complex64)
+
+        # Also compute spectrum from this IQ block (magnitude²)
+        if len(iq_complex) > 0:
+            fft = np.fft.fftshift(np.fft.fft(iq_complex, n=self._trace_length))
+            power_db = 20 * np.log10(np.abs(fft) / len(fft) + 1e-12)
+            # Shift by reference level approximation
+            power_db = power_db.astype(np.float32) + float(self._ref_level_dbm)
+        else:
+            power_db = np.full(self._trace_length, np.nan, dtype=np.float32)
+
+        freq_step = span_hz / max(len(power_db) - 1, 1)
+        spectrum = SpectrumFrame(
+            station_id=station_id,
+            timestamp_ms=SpectrumFrame.now_ms(),
+            freq_start_hz=float(center_hz - span_hz / 2),
+            freq_step_hz=float(freq_step),
+            levels_dbm=power_db,
+            task_id=task_id,
+            driver="rsa306b-iq",
+        )
+
+        # Actual IQ sample rate from the device (may differ slightly from span)
+        actual_sample_rate_hz = float(rsa.IQBLK_GetIQBandwidth())
+
+        log.debug(
+            "RSA306B IQ: got %d complex samples at %.1f kHz sr",
+            len(iq_complex), actual_sample_rate_hz / 1e3,
+        )
+        return spectrum, iq_complex, actual_sample_rate_hz
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _acquire_segment(

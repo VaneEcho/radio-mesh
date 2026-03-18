@@ -191,6 +191,25 @@ def init_schema() -> None:
     log.info("DB schema ready")
 
 
+def delete_old_frames(cutoff_ms: int) -> int:
+    """
+    Delete spectrum_frames older than *cutoff_ms* (Unix milliseconds).
+
+    TimescaleDB drops whole chunks that fall entirely before the cutoff,
+    making this operation very efficient for time-series data.
+
+    Returns the number of rows deleted.
+    """
+    sql = "DELETE FROM spectrum_frames WHERE period_start_ms < %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (cutoff_ms,))
+            deleted = cur.rowcount
+    if deleted:
+        log.info("Data retention: deleted %d frame(s) older than cutoff_ms=%d", deleted, cutoff_ms)
+    return deleted
+
+
 # ── spectrum_frames ───────────────────────────────────────────────────────────
 
 def insert_bundle(

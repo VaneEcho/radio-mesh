@@ -2,6 +2,20 @@ version: "3.9"
 
 services:
 
+  # ── Redis (pub/sub for multi-worker stream broadcast) ────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rfmesh-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no  # ephemeral, no persistence needed
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ── TimescaleDB ─────────────────────────────────────────────────────────────
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -31,10 +45,15 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://rfmesh:rfmesh@timescaledb:5432/rfmesh
-      API_TOKEN: ""          # set a strong token in production
+      REDIS_URL: redis://redis:6379/0
+      STREAM_BACKEND: redis   # redis | memory  (redis enables multi-worker broadcast)
+      API_TOKEN: ""           # set a strong token in production
       LOG_LEVEL: INFO
+      DATA_RETENTION_DAYS: "90"
     ports:
       - "8000:8000"
 

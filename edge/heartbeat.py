@@ -114,10 +114,11 @@ class Heartbeat:
         if ws is None:
             return
         payload = json.dumps({
-            "type":       "stream_frame",
-            "station_id": self._station_id,
-            "b64":        b64,
-            "meta":       meta,
+            "type":         "stream_frame",
+            "station_id":   self._station_id,
+            "timestamp_ms": int(time.time() * 1000),
+            "b64":          b64,
+            "meta":         meta,
         })
         with self._send_lock:
             try:
@@ -125,6 +126,52 @@ class Heartbeat:
                 log.debug("stream_frame sent (%d bytes)", len(payload))
             except Exception as exc:
                 log.debug("stream_frame send failed: %s", exc)
+
+    def send_audio_chunk(
+        self,
+        timestamp_ms: int,
+        sample_rate: int,
+        channels: int,
+        pcm_b64: str,
+    ) -> None:
+        """
+        Push a demodulated audio chunk to Cloud over the heartbeat WebSocket.
+
+        Thread-safe; may be called from the AudioStreamer thread.  Chunks are
+        silently dropped when:
+          - cloud is disabled
+          - no WebSocket connection is active
+
+        Parameters
+        ----------
+        timestamp_ms: Unix ms timestamp of this audio chunk (aligned with
+                      the spectrum frame covering the same moment in time).
+        sample_rate:  PCM sample rate in Hz (e.g. 16000).
+        channels:     Number of audio channels (1 = mono).
+        pcm_b64:      base64-encoded raw PCM bytes (S16LE, little-endian).
+        """
+        if not self._enabled:
+            return
+
+        ws = self._ws
+        if ws is None:
+            return
+
+        payload = json.dumps({
+            "type":         "audio_chunk",
+            "station_id":   self._station_id,
+            "timestamp_ms": timestamp_ms,
+            "sample_rate":  sample_rate,
+            "channels":     channels,
+            "encoding":     "pcm_s16le",
+            "pcm_b64":      pcm_b64,
+        })
+        with self._send_lock:
+            try:
+                ws.send(payload)
+                log.debug("audio_chunk sent (%d bytes)", len(payload))
+            except Exception as exc:
+                log.debug("audio_chunk send failed: %s", exc)
 
     # ── Internal ──────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # RF·MESH 下一阶段开发计划
 
-> 文档版本：v1.0 | 创建日期：2026-03-16
+> 文档版本：v1.1 | 创建日期：2026-03-16 | 最后更新：2026-03-18
 > **用途：** 新会话接力文档。当前会话完成了 Phase 0–8 全部代码实现及架构文档修正，此文档描述接下来要做什么。
 
 ---
@@ -9,9 +9,9 @@
 
 ```
 Phase 0–8  全部代码已实现，合并入主分支
-Phase 9    音频解调流      ❌ 未实现（设计已在 ARCHITECTURE.md §12.2）
-Phase 10   工程化加固      ❌ 未实现（日志/Redis/数据保留/鉴权）
-Phase 11   部署运维文档    ❌ 未写
+Phase 9    音频解调流      🔶 Cloud WS + 前端播放器已实现；Edge 硬件路径等设备
+Phase 10   工程化加固      🔶 日志/数据保留/鉴权已实现；Redis pub/sub 待实现
+Phase 11   部署运维文档    ✅ docs/DEPLOYMENT.md 已写
 联调阶段   等待真实设备接入  ⏳ 取决于硬件到位时间
 ```
 
@@ -230,6 +230,10 @@ healthcheck:
 
 ### EM550 联调
 
+> **已知问题修复（2026-03-18）：** `edge/drivers/em550.py` `connect()` 方法现在在应用默认设置前
+> 先发送 `ABORt` + `*OPC?`，避免仪器处于扫描状态时报 `-221 "Settings conflict;Not during scan"`。
+> 如果复现此错误，检查 `connect()` 里是否有该逻辑。
+
 | # | 验证项 | 预期结果 | 常见问题 |
 |---|--------|----------|----------|
 | 1 | TCP 连接到 EM550（端口 5555） | `IDN?` 返回设备型号 | IP 地址、防火墙 |
@@ -261,17 +265,15 @@ healthcheck:
 ## 优先级总结
 
 ```
-立即可以动工（不依赖硬件）：
-  ├── Phase 10.1  结构化日志（1天）
-  ├── Phase 10.3  数据保留策略（半天）
-  ├── Phase 10.4  API 鉴权完善（半天）
-  ├── Phase 11    部署文档（1天）
-  └── Phase 9     音频解调流设计（先把 Edge → Cloud WS 协议和前端 WebAudio 部分做好，EM550 路径等设备到位）
+已完成（不依赖硬件）：
+  ├── ✅ Phase 9  音频全链路（demod.py、if_analysis_iq、AudioStreamer、EM550 Annex E、heartbeat、前端播放器）
+  ├── ✅ Phase 10 工程化加固全部（日志/数据保留/鉴权/Redis pub/sub）
+  └── ✅ Phase 11 部署文档（docs/DEPLOYMENT.md）
 
 等设备到位后：
-  ├── EM550 联调（逐项验证）
-  ├── EM550 Annex E 音频路径（Phase 9 路径 A）
-  └── RSA306B 联调
+  ├── EM550 联调（逐项验证，见下方联调清单）
+  ├── EM550 Annex E 验证（start_audio_stream SCPI 命令语法确认）
+  └── RSA306B 联调（if_analysis_iq IQ 数据格式确认）
 ```
 
 ---

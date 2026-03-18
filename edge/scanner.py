@@ -125,6 +125,7 @@ class Scanner:
 
         self._running = False
         self._sweep_count = 0
+        self.driver: Optional[BaseSpectrumDriver] = None  # set after connect(), for AudioStreamer
 
     def run(self) -> None:
         self._running = True
@@ -134,6 +135,7 @@ class Scanner:
         log.info("Connecting to device …")
 
         with driver:
+            self.driver = driver  # expose for AudioStreamer
             log.info("Device connected: %r", driver)
             log.info(
                 "Scan range: %.1f – %.1f MHz, step %.0f Hz",
