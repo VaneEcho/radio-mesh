@@ -198,6 +198,13 @@ class EM550Driver(BaseSpectrumDriver):
         idn = self._instr.query_str("*IDN?")
         log.info("Connected: %s", idn.strip())
 
+        # Abort any ongoing scan before applying settings (prevents -221 conflict)
+        try:
+            self._instr.write("ABORt")
+            self._instr.query_str("*OPC?")
+        except Exception:
+            pass
+
         self._apply_default_settings()
 
     def disconnect(self) -> None:
