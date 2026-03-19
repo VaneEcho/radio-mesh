@@ -173,6 +173,7 @@ class FreqStationSeries(BaseModel):
 
 class FreqTimeseriesResponse(BaseModel):
     freq_hz: float
+    bandwidth_hz: float
     start_ms: int
     end_ms: int
     stations: list[FreqStationSeries]

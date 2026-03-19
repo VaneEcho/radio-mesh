@@ -566,28 +566,33 @@ def query_freq_timeseries(
     start_ms: int,
     end_ms: int,
     station_ids: list[str] | None = None,
+    bandwidth_hz: float = 25_000,
 ) -> list[dict]:
     """
-    Extract the power level of a single frequency bin across all stations
-    and all frames within the time window.
+    Extract the maximum power level within [freq_hz ± bandwidth_hz/2] across
+    all stations and frames within the time window.
 
     For each matching frame, we:
       1. Decompress levels_gz → float32 array
-      2. Compute bin_idx = round((freq_hz - freq_start_hz) / freq_step_hz)
-      3. If 0 <= bin_idx < num_points, record (period_start_ms, dbm)
+      2. Compute bin range covering [freq_hz - bw/2, freq_hz + bw/2]
+      3. Take max(levels[lo:hi+1]) as the representative dBm value
 
     Returns a list of dicts grouped by station_id, sorted by time.
     """
     import struct as _struct
 
+    half_bw = bandwidth_hz / 2.0
+    freq_lo = freq_hz - half_bw
+    freq_hi = freq_hz + half_bw
+
     conditions = [
         "period_start_ms >= %s",
         "period_end_ms   <= %s",
-        # Only frames whose freq range actually covers the requested freq
+        # Only frames whose freq range overlaps the requested band
         "freq_start_hz <= %s",
         "(freq_start_hz + freq_step_hz * (num_points - 1)) >= %s",
     ]
-    params: list = [start_ms, end_ms, freq_hz, freq_hz]
+    params: list = [start_ms, end_ms, freq_hi, freq_lo]
 
     if station_ids:
         placeholders = ",".join(["%s"] * len(station_ids))
@@ -607,21 +612,27 @@ def query_freq_timeseries(
             cur.execute(sql, params)
             rows = cur.fetchall()
 
-    # Group by station, extract the bin
+    # Group by station, take max level over the bandwidth window
     per_station: dict[str, list] = {}
     for row in rows:
-        sid = row["station_id"]
-        bin_idx = round(
-            (freq_hz - row["freq_start_hz"]) / row["freq_step_hz"]
-        )
-        if not (0 <= bin_idx < row["num_points"]):
+        sid  = row["station_id"]
+        step = row["freq_step_hz"]
+        f0   = row["freq_start_hz"]
+        npts = row["num_points"]
+
+        lo_idx = max(0,        round((freq_lo - f0) / step))
+        hi_idx = min(npts - 1, round((freq_hi - f0) / step))
+        if lo_idx > hi_idx:
             continue
-        raw = gzip.decompress(bytes(row["levels_gz"]))
-        # float32 little-endian
-        dbm = _struct.unpack_from("<f", raw, bin_idx * 4)[0]
+
+        raw_bytes = gzip.decompress(bytes(row["levels_gz"]))
+        count = hi_idx - lo_idx + 1
+        dbm_vals = _struct.unpack_from(f"<{count}f", raw_bytes, lo_idx * 4)
+        dbm = round(float(max(dbm_vals)), 2)
+
         per_station.setdefault(sid, []).append({
             "t": row["period_start_ms"],
-            "dbm": round(float(dbm), 2),
+            "dbm": dbm,
         })
 
     return [

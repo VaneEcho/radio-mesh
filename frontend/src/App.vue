@@ -6,9 +6,9 @@
       <div class="logo">
         <div class="logo-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="3" fill="#38bdf8"/>
-            <circle cx="12" cy="12" r="7" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="2 2" opacity=".5"/>
-            <circle cx="12" cy="12" r="11" stroke="#38bdf8" stroke-width="1" stroke-dasharray="1 3" opacity=".25"/>
+            <circle cx="12" cy="12" r="3" fill="var(--c-accent)"/>
+            <circle cx="12" cy="12" r="7" stroke="var(--c-accent)" stroke-width="1.5" stroke-dasharray="2 2" opacity=".5"/>
+            <circle cx="12" cy="12" r="11" stroke="var(--c-accent)" stroke-width="1" stroke-dasharray="1 3" opacity=".25"/>
           </svg>
         </div>
         <span class="logo-text">RF·MESH</span>
@@ -24,6 +24,29 @@
           </svg>
           <span>站点总览</span>
         </router-link>
+        <!-- Task sub-items -->
+        <div class="nav-sub-group">
+          <router-link :to="{ path: '/tasks', query: { type: 'band_scan' } }" class="nav-item nav-sub-item" :class="{ active: activeMenu === '/tasks?type=band_scan' }">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M3 10h18M3 14h18M3 18h18"/>
+            </svg>
+            <span>频段扫描</span>
+          </router-link>
+          <router-link :to="{ path: '/tasks', query: { type: 'channel_scan' } }" class="nav-item nav-sub-item" :class="{ active: activeMenu === '/tasks?type=channel_scan' }">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="5" width="18" height="14" rx="2"/>
+              <path d="M8 5v14M16 5v14"/>
+            </svg>
+            <span>信道扫描</span>
+          </router-link>
+          <router-link :to="{ path: '/tasks', query: { type: 'if_analysis' } }" class="nav-item nav-sub-item" :class="{ active: activeMenu === '/tasks?type=if_analysis' }">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+              <circle cx="12" cy="12" r="4"/>
+            </svg>
+            <span>中频分析</span>
+          </router-link>
+        </div>
         <router-link to="/freq-query" class="nav-item" :class="{ active: activeMenu === '/freq-query' }">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/>
@@ -40,14 +63,6 @@
             <circle cx="9"  cy="18" r="2" fill="currentColor" stroke="none"/>
           </svg>
           <span>频率指配</span>
-        </router-link>
-        <router-link to="/tasks" class="nav-item" :class="{ active: activeMenu === '/tasks' }">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-            <rect x="9" y="3" width="6" height="4" rx="1"/>
-            <path d="M9 12h6M9 16h4"/>
-          </svg>
-          <span>任务下发</span>
         </router-link>
         <router-link to="/realtime" class="nav-item" :class="{ active: activeMenu === '/realtime' }">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -90,6 +105,25 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="theme-btn" @click="toggleTheme" :title="isDark ? '切换到白天模式' : '切换到夜间模式'">
+          <!-- Moon icon for dark mode (click to go light) -->
+          <svg v-if="isDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <!-- Sun icon for light mode (click to go dark) -->
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <span>{{ isDark ? '夜间' : '白天' }}</span>
+        </button>
         <div class="version-badge">v0.8</div>
       </div>
     </aside>
@@ -105,34 +139,131 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useTheme } from './composables/useTheme.js'
 
 const route = useRoute()
 const activeMenu = computed(() => {
   if (route.path.startsWith('/spectrum')) return '/'
+  if (route.path === '/tasks' && route.query.type) return `/tasks?type=${route.query.type}`
   return route.path
 })
+
+const { isDark, toggleTheme } = useTheme()
 </script>
 
 <style>
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --c-bg:        #060c18;
+  --c-card:      #080e1c;
+  --c-card-2:    #0a0f1e;
+  --c-raised:    #0f172a;
+  --c-deep:      #040810;
+  /* Borders */
+  --c-border-sub: #0f1a2e;
+  --c-border:     #1e293b;
+  --c-border-str: #334155;
+  /* Text */
+  --c-text:       #f1f5f9;
+  --c-text-2:     #e2e8f0;
+  --c-text-muted: #94a3b8;
+  --c-text-dim:   #64748b;
+  --c-text-faint: #475569;
+  --c-text-ghost: #334155;
+  /* Accent (sky) */
+  --c-accent:     #38bdf8;
+  --c-accent-bg:  rgba(56,189,248,0.08);
+  --c-accent-bgh: rgba(56,189,248,0.15);
+  --c-accent-bgx: rgba(56,189,248,0.10);
+  --c-accent-bgs: rgba(56,189,248,0.20);
+  --c-accent-bds: rgba(56,189,248,0.20);
+  --c-accent-bd:  rgba(56,189,248,0.40);
+  /* Status */
+  --c-green:      #4ade80;
+  --c-green-bg:   rgba(74,222,128,0.08);
+  --c-green-bd:   rgba(74,222,128,0.25);
+  --c-red:        #f87171;
+  --c-red-bg:     rgba(239,68,68,0.08);
+  --c-red-bd:     rgba(239,68,68,0.25);
+  --c-red-bdx:    rgba(239,68,68,0.40);
+  --c-indigo:     #818cf8;
+  --c-indigo-bg:  rgba(99,102,241,0.08);
+  --c-indigo-bd:  rgba(99,102,241,0.30);
+  --c-gold:       #fbbf24;
+  --c-gold-bg:    rgba(251,191,36,0.10);
+  --c-gold-bd:    rgba(251,191,36,0.30);
+  --c-orange:     #fb923c;
+  /* Overlay */
+  --c-overlay:    rgba(0,0,0,0.60);
+  --c-overlay-s:  rgba(0,0,0,0.70);
+  /* Element Plus dark overrides */
+  --el-color-primary:       #38bdf8;
+  --el-bg-color:            #0f172a;
+  --el-bg-color-overlay:    #0f172a;
+  --el-border-color:        #1e293b;
+  --el-text-color-primary:  #e2e8f0;
+  --el-text-color-regular:  #94a3b8;
+  --el-fill-color-blank:    #0f172a;
+}
+
+[data-theme="light"] {
+  --c-bg:        #f0f4f8;
+  --c-card:      #ffffff;
+  --c-card-2:    #f8fafc;
+  --c-raised:    #f1f5f9;
+  --c-deep:      #f1f5f9;
+  --c-border-sub: #e8edf2;
+  --c-border:     #cbd5e1;
+  --c-border-str: #94a3b8;
+  --c-text:       #0f172a;
+  --c-text-2:     #1e293b;
+  --c-text-muted: #475569;
+  --c-text-dim:   #64748b;
+  --c-text-faint: #94a3b8;
+  --c-text-ghost: #cbd5e1;
+  --c-accent:     #0284c7;
+  --c-accent-bg:  rgba(2,132,199,0.06);
+  --c-accent-bgh: rgba(2,132,199,0.12);
+  --c-accent-bgx: rgba(2,132,199,0.08);
+  --c-accent-bgs: rgba(2,132,199,0.15);
+  --c-accent-bds: rgba(2,132,199,0.25);
+  --c-accent-bd:  rgba(2,132,199,0.50);
+  --c-green:      #16a34a;
+  --c-green-bg:   rgba(22,163,74,0.08);
+  --c-green-bd:   rgba(22,163,74,0.30);
+  --c-red:        #dc2626;
+  --c-red-bg:     rgba(220,38,38,0.08);
+  --c-red-bd:     rgba(220,38,38,0.30);
+  --c-red-bdx:    rgba(220,38,38,0.50);
+  --c-indigo:     #4f46e5;
+  --c-indigo-bg:  rgba(79,70,229,0.08);
+  --c-indigo-bd:  rgba(79,70,229,0.30);
+  --c-gold:       #d97706;
+  --c-gold-bg:    rgba(217,119,6,0.08);
+  --c-gold-bd:    rgba(217,119,6,0.30);
+  --c-orange:     #ea580c;
+  --c-overlay:    rgba(0,0,0,0.30);
+  --c-overlay-s:  rgba(0,0,0,0.40);
+  /* Element Plus light overrides */
+  --el-color-primary:       #0284c7;
+  --el-bg-color:            #f1f5f9;
+  --el-bg-color-overlay:    #ffffff;
+  --el-border-color:        #cbd5e1;
+  --el-text-color-primary:  #0f172a;
+  --el-text-color-regular:  #475569;
+  --el-fill-color-blank:    #ffffff;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #app { height: 100%; }
 body {
-  background: #060c18;
-  color: #e2e8f0;
+  background: var(--c-bg);
+  color: var(--c-text-2);
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Element Plus dark overrides */
-:root {
-  --el-color-primary: #38bdf8;
-  --el-bg-color: #0f172a;
-  --el-bg-color-overlay: #0f172a;
-  --el-border-color: #1e293b;
-  --el-text-color-primary: #e2e8f0;
-  --el-text-color-regular: #94a3b8;
-  --el-fill-color-blank: #0f172a;
+  transition: background 0.2s, color 0.2s;
 }
 </style>
 
@@ -147,11 +278,11 @@ body {
 .sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: #080e1c;
-  border-right: 1px solid #0f1a2e;
+  background: var(--c-card);
+  border-right: 1px solid var(--c-border-sub);
   display: flex;
   flex-direction: column;
-  padding: 0;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .logo {
@@ -159,19 +290,19 @@ body {
   align-items: center;
   gap: 10px;
   padding: 22px 20px 18px;
-  border-bottom: 1px solid #0f1a2e;
+  border-bottom: 1px solid var(--c-border-sub);
 }
 .logo-icon {
   width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(56,189,248,0.08);
-  border: 1px solid rgba(56,189,248,0.2);
+  background: var(--c-accent-bg);
+  border: 1px solid var(--c-accent-bds);
   border-radius: 8px;
 }
 .logo-text {
   font-size: 16px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--c-text);
   letter-spacing: 1px;
 }
 
@@ -191,12 +322,12 @@ body {
   border-radius: 9px;
   font-size: 13px;
   font-weight: 500;
-  color: #475569;
+  color: var(--c-text-faint);
   text-decoration: none;
   transition: all .15s;
 }
-.nav-item:hover { background: rgba(255,255,255,0.03); color: #94a3b8; }
-.nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8; }
+.nav-item:hover { background: var(--c-accent-bg); color: var(--c-text-muted); }
+.nav-item.active { background: var(--c-accent-bgx); color: var(--c-accent); }
 .nav-item.active .nav-icon { opacity: 1; }
 
 .nav-icon {
@@ -206,25 +337,68 @@ body {
 }
 .nav-item.active .nav-icon { opacity: 1; }
 
-.sidebar-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #0f1a2e;
+.nav-sub-group {
+  position: relative;
+  padding-left: 18px;
+  margin: 1px 0 2px;
 }
+.nav-sub-group::before {
+  content: '';
+  position: absolute;
+  left: 20px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--c-border);
+}
+.nav-sub-item {
+  font-size: 12px;
+  padding: 7px 10px 7px 16px;
+  color: var(--c-text-ghost);
+}
+.nav-sub-item .nav-icon { width: 14px; height: 14px; }
+.nav-sub-item:hover { color: var(--c-text-dim); }
+.nav-sub-item.active { color: var(--c-accent); }
+
+.sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--c-border-sub);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.theme-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+
 .version-badge {
   display: inline-block;
   font-size: 10px;
   padding: 2px 7px;
   border-radius: 5px;
-  background: #0f172a;
-  color: #334155;
-  border: 1px solid #1e293b;
+  background: var(--c-raised);
+  color: var(--c-text-ghost);
+  border: 1px solid var(--c-border);
 }
 
 /* ── Main ── */
 .main-content {
   flex: 1;
   overflow-y: auto;
-  background: #060c18;
+  background: var(--c-bg);
   padding: 28px 32px;
+  transition: background 0.2s;
 }
 </style>

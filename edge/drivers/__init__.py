@@ -3,9 +3,10 @@ Spectrum device drivers for RF·MESH edge nodes.
 
 Available drivers
 -----------------
-EM550Driver   R&S EM550 VHF/UHF Monitoring Receiver (20 MHz – 3.6 GHz, SCPI/TCP)
-RSA306BDriver Tektronix RSA306B USB Analyzer (9 kHz – 6.2 GHz) — placeholder
-MockDriver    Synthetic driver for development / CI (no hardware required)
+EM550Driver          R&S EM550 VHF/UHF Monitoring Receiver (20 MHz – 3.6 GHz, SCPI/TCP)
+RSA306BDriver        Tektronix RSA306B USB Analyzer (9 kHz – 6.2 GHz, Linux)
+RSA306BWindowsDriver Tektronix RSA306B USB Analyzer (9 kHz – 6.2 GHz, Windows)
+MockDriver           Synthetic driver for development / CI (no hardware required)
 
 Usage
 -----

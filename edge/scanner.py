@@ -63,8 +63,24 @@ def _build_driver(cfg: dict) -> BaseSpectrumDriver:
         )
 
     if dtype == "rsa306b":
+        import sys
+        if sys.platform == "win32":
+            from .drivers.rsa306b_win import RSA306BWindowsDriver
+            return RSA306BWindowsDriver(
+                device_index=int(dev.get("device_index", 0)),
+                rbw_hz=float(dev.get("rbw_hz", 10_000)),
+                trace_length=int(dev.get("trace_length", 801)),
+                ref_level_dbm=float(dev.get("ref_level_dbm", 0.0)),
+                dll_path=str(dev.get("dll_path", r"C:\Program Files\Tektronix\RSA_API\lib\x64\RSA_API.dll")),
+            )
         from .drivers import RSA306BDriver
-        return RSA306BDriver()
+        return RSA306BDriver(
+            device_index=int(dev.get("device_index", 0)),
+            rbw_hz=float(dev.get("rbw_hz", 10_000)),
+            trace_length=int(dev.get("trace_length", 801)),
+            ref_level_dbm=float(dev.get("ref_level_dbm", 0.0)),
+            so_dir=str(dev.get("so_dir", "/drivers/")),
+        )
 
     if dtype == "mock":
         return MockDriver(

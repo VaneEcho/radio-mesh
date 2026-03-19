@@ -125,7 +125,7 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
-.stations-page {}
+.stations-page { transition: background 0.2s, border-color 0.2s, color 0.2s; }
 .mb20 { margin-bottom: 20px; }
 .mb28 { margin-bottom: 28px; }
 
@@ -135,27 +135,27 @@ onUnmounted(() => clearInterval(timer))
   justify-content: space-between;
   align-items: flex-start;
 }
-.page-title { font-size: 24px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
-.page-sub   { font-size: 13px; color: #64748b; margin-top: 3px; }
+.page-title { font-size: 24px; font-weight: 700; color: var(--c-text); letter-spacing: -0.3px; }
+.page-sub   { font-size: 13px; color: var(--c-text-dim); margin-top: 3px; }
 
 .refresh-btn {
   width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 9px;
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  color: #64748b;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-dim);
   cursor: pointer;
   transition: all .15s;
 }
-.refresh-btn:hover { border-color: #334155; color: #94a3b8; }
+.refresh-btn:hover { border-color: var(--c-border-str); color: var(--c-text-muted); }
 .refresh-btn.spinning svg { animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Error ── */
 .error-bar {
-  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
-  border-radius: 10px; padding: 10px 16px; color: #f87171; font-size: 13px;
+  background: var(--c-red-bg); border: 1px solid var(--c-red-bd);
+  border-radius: 10px; padding: 10px 16px; color: var(--c-red); font-size: 13px;
 }
 
 /* ── Stats strip ── */
@@ -163,24 +163,24 @@ onUnmounted(() => clearInterval(timer))
   display: inline-flex;
   align-items: center;
   gap: 0;
-  background: #0a0f1e;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 12px;
   padding: 12px 24px;
   gap: 24px;
 }
 .stat-item { text-align: center; }
-.stat-val  { font-size: 22px; font-weight: 700; color: #e2e8f0; line-height: 1; }
-.stat-lbl  { font-size: 11px; color: #475569; margin-top: 3px; }
-.online-val  { color: #4ade80; }
-.offline-val { color: #64748b; }
-.stat-divider { width: 1px; height: 32px; background: #1e293b; }
+.stat-val  { font-size: 22px; font-weight: 700; color: var(--c-text-2); line-height: 1; }
+.stat-lbl  { font-size: 11px; color: var(--c-text-faint); margin-top: 3px; }
+.online-val  { color: var(--c-green); }
+.offline-val { color: var(--c-text-dim); }
+.stat-divider { width: 1px; height: 32px; background: var(--c-border); }
 
 /* ── Empty ── */
 .empty-state { text-align: center; padding: 100px 0; }
 .empty-icon  { font-size: 52px; opacity: .3; margin-bottom: 12px; }
-.empty-text  { font-size: 15px; color: #475569; }
-.empty-hint  { font-size: 13px; color: #334155; margin-top: 4px; }
+.empty-text  { font-size: 15px; color: var(--c-text-faint); }
+.empty-hint  { font-size: 13px; color: var(--c-text-ghost); margin-top: 4px; }
 
 /* ── Cards grid ── */
 .cards-grid {
@@ -191,16 +191,16 @@ onUnmounted(() => clearInterval(timer))
 
 .station-card {
   position: relative;
-  background: #080e1c;
-  border: 1px solid #1e293b;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   padding: 18px;
   cursor: pointer;
-  transition: border-color .2s, transform .15s, box-shadow .2s;
+  transition: border-color .2s, transform .15s, box-shadow .2s, background 0.2s, color 0.2s;
   overflow: hidden;
 }
 .station-card:hover {
-  border-color: #334155;
+  border-color: var(--c-border-str);
   transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
@@ -211,7 +211,7 @@ onUnmounted(() => clearInterval(timer))
   position: absolute;
   top: -20px; right: -20px;
   width: 80px; height: 80px;
-  background: radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, var(--c-green-bg) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -227,13 +227,13 @@ onUnmounted(() => clearInterval(timer))
 .status-indicator .dot {
   position: absolute; inset: 0;
   border-radius: 50%;
-  background: #1e293b;
+  background: var(--c-border);
 }
-.status-indicator.online .dot { background: #4ade80; }
+.status-indicator.online .dot { background: var(--c-green); }
 .status-indicator.online .pulse {
   position: absolute; inset: -3px;
   border-radius: 50%;
-  background: rgba(74,222,128,0.3);
+  background: var(--c-green-bd);
   animation: pulse 2s ease-out infinite;
 }
 @keyframes pulse {
@@ -241,13 +241,13 @@ onUnmounted(() => clearInterval(timer))
   100% { transform: scale(2.2); opacity: 0; }
 }
 
-.card-arrow { color: #1e293b; transition: color .15s; }
-.station-card:hover .card-arrow { color: #334155; }
+.card-arrow { color: var(--c-border); transition: color .15s; }
+.station-card:hover .card-arrow { color: var(--c-border-str); }
 .station-card.online:hover .card-arrow { color: #166534; }
 
 .card-body { margin-bottom: 14px; }
-.card-id   { font-size: 15px; font-weight: 600; color: #e2e8f0; }
-.card-name { font-size: 12px; color: #475569; margin-top: 3px; }
+.card-id   { font-size: 15px; font-weight: 600; color: var(--c-text-2); }
+.card-name { font-size: 12px; color: var(--c-text-faint); margin-top: 3px; }
 
 .card-footer { display: flex; align-items: center; gap: 10px; }
 
@@ -256,8 +256,8 @@ onUnmounted(() => clearInterval(timer))
   padding: 2px 9px; border-radius: 6px;
   border: 1px solid;
 }
-.tag-online  { background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.25); color: #4ade80; }
-.tag-offline { background: rgba(71,85,105,0.2);   border-color: #1e293b; color: #475569; }
+.tag-online  { background: var(--c-green-bg); border-color: var(--c-green-bd); color: var(--c-green); }
+.tag-offline { background: rgba(71,85,105,0.2);   border-color: var(--c-border); color: var(--c-text-faint); }
 
-.last-seen { font-size: 11px; color: #334155; }
+.last-seen { font-size: 11px; color: var(--c-text-ghost); }
 </style>

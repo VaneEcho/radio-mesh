@@ -21,6 +21,22 @@
         />
         <span class="freq-unit">MHz</span>
       </div>
+      <div class="bw-input-wrap">
+        <input
+          v-model.number="bandwidthKhz"
+          class="bw-input"
+          type="number"
+          step="1"
+          min="1"
+          placeholder="分析带宽"
+        />
+        <span class="bw-unit">kHz</span>
+      </div>
+      <div class="bw-presets">
+        <button v-for="bw in BW_PRESETS" :key="bw.value"
+          class="bw-btn" :class="{ active: bandwidthKhz === bw.value }"
+          @click="bandwidthKhz = bw.value">{{ bw.label }}</button>
+      </div>
       <div class="time-presets">
         <button
           v-for="p in PRESETS"
@@ -60,6 +76,7 @@
         <span class="meta-chip chip-freq">{{ fmtFreq(result.freq_hz) }}</span>
         <span class="meta-chip chip-range">{{ fmtMs(result.start_ms) }} – {{ fmtMs(result.end_ms) }}</span>
         <span class="meta-chip chip-stations">{{ result.stations.length }} 个站点有数据</span>
+        <span class="meta-chip chip-bw">BW {{ (result.bandwidth_hz / 1e3).toFixed(1) }} kHz</span>
       </div>
 
       <!-- Station ranking table -->
@@ -132,6 +149,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { queryFreqTimeseries } from '../api/index.js'
+import { useTheme } from '../composables/useTheme.js'
 
 const PRESETS = [
   { label: '1 小时', value: '1h' },
@@ -140,6 +158,15 @@ const PRESETS = [
   { label: '7 天',   value: '7d' },
   { label: '自定义', value: 'custom' },
 ]
+
+const BW_PRESETS = [
+  { label: '12.5K', value: 12.5 },
+  { label: '25K',   value: 25 },
+  { label: '100K',  value: 100 },
+  { label: '200K',  value: 200 },
+]
+
+const { isDark, chartColors } = useTheme()
 
 const freqInput   = ref('')
 const preset      = ref('24h')
@@ -154,6 +181,7 @@ const activeStation   = ref(null)
 const chartEl     = ref(null)
 const isShowingRaw = ref(false)
 const isZoomed     = ref(false)
+const bandwidthKhz = ref(25)
 
 let chart = null
 
@@ -196,7 +224,7 @@ async function query() {
   error.value = ''
   try {
     const [start, end] = timeRange()
-    result.value = await queryFreqTimeseries(mhz * 1e6, start, end)
+    result.value = await queryFreqTimeseries(mhz * 1e6, start, end, [], bandwidthKhz.value * 1000)
     queried.value = true
     selectedStation.value = null
     activeStation.value = null
@@ -225,7 +253,11 @@ const TARGET_PTS = 500   // time axis has fewer frames, 500 is plenty
 
 function maxPool(series, target) {
   const n = series.length
-  if (n <= target) return series
+  if (n <= target) {
+    const out = new Array(n)
+    for (let i = 0; i < n; i++) out[i] = [series[i].t, series[i].dbm]
+    return out
+  }
   const out = []
   const binSize = n / target
   for (let i = 0; i < target; i++) {
@@ -268,7 +300,7 @@ function buildSeriesData(series, loIdx, hiIdx, target) {
 function buildChart() {
   if (!chartEl.value) return
   if (chart) chart.dispose()
-  chart = echarts.init(chartEl.value, 'dark')
+  chart = echarts.init(chartEl.value, chartColors.value.ecTheme)
 }
 
 function resetZoom() {
@@ -294,48 +326,48 @@ function renderStationChart(s) {
         const ts = d.toLocaleString('zh-CN', { hour12: false })
         return `<span style="color:#94a3b8;font-size:11px">${ts}</span><br/><b style="color:#e2e8f0;font-size:13px">${p.data[1].toFixed(1)} dBm</b>`
       },
-      backgroundColor: '#0f172a',
-      borderColor: '#334155',
+      backgroundColor: chartColors.value.tooltipBg,
+      borderColor: chartColors.value.tooltipBorder,
       borderWidth: 1,
       padding: [8, 12],
-      textStyle: { color: '#e2e8f0', fontSize: 12 },
+      textStyle: { color: chartColors.value.tooltipText, fontSize: 12 },
     },
     xAxis: {
       type: 'time',
       axisLabel: {
-        color: '#64748b', fontSize: 11,
+        color: chartColors.value.axisLabel, fontSize: 11,
         formatter: (v) => {
           const d = new Date(v)
           return d.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })
         },
       },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
     yAxis: {
       type: 'value',
       name: 'dBm',
       nameLocation: 'end',
-      nameTextStyle: { color: '#64748b', fontSize: 11 },
-      axisLabel: { color: '#64748b', fontSize: 11 },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 11 },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 11 },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
       {
         type: 'slider', xAxisIndex: 0, bottom: 6, height: 28,
-        fillerColor: 'rgba(56,189,248,0.08)',
-        borderColor: '#1e293b',
-        handleStyle: { color: '#38bdf8', borderColor: '#38bdf8' },
-        textStyle: { color: '#64748b', fontSize: 10 },
+        fillerColor: chartColors.value.dzFiller,
+        borderColor: chartColors.value.axisLine,
+        handleStyle: { color: chartColors.value.accent, borderColor: chartColors.value.accent },
+        textStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
         selectedDataBackground: {
-          lineStyle: { color: '#38bdf8', width: 1 },
-          areaStyle: { color: 'rgba(56,189,248,0.06)' },
+          lineStyle: { color: chartColors.value.accent, width: 1 },
+          areaStyle: { color: chartColors.value.dzFiller },
         },
         dataBackground: {
-          lineStyle: { color: '#334155', width: 1 },
-          areaStyle: { color: 'rgba(51,65,85,0.3)' },
+          lineStyle: { color: chartColors.value.axisLine, width: 1 },
+          areaStyle: { color: chartColors.value.dzBg },
         },
       },
     ],
@@ -345,23 +377,28 @@ function renderStationChart(s) {
       sampling: null,
       smooth: false,
       symbol: 'none',
-      lineStyle: { color: '#38bdf8', width: 1.5 },
+      lineStyle: { color: chartColors.value.accent, width: 1.5 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(56,189,248,0.25)' },
-          { offset: 0.7, color: 'rgba(56,189,248,0.04)' },
-          { offset: 1, color: 'rgba(56,189,248,0)' },
+          { offset: 0, color: chartColors.value.accentFill[0] },
+          { offset: 0.7, color: chartColors.value.accentFill[1] },
+          { offset: 1, color: chartColors.value.accentFill[2] },
         ]),
       },
     }],
   }, true)
 
   chart.off('datazoom')
-  chart.on('datazoom', () => {
-    const opt = chart.getOption()
-    const dz  = opt.dataZoom[0]
-    const startPct = dz.start ?? 0
-    const endPct   = dz.end   ?? 100
+  chart.on('datazoom', (e) => {
+    const ev = e.batch?.[0] ?? e
+    // For time-axis dataZoom, startValue/endValue are Unix ms timestamps.
+    const startMs = ev.startValue
+    const endMs   = ev.endValue
+    if (startMs == null || endMs == null || series.length === 0) return
+
+    const totalMs  = series[series.length - 1].t - series[0].t
+    const startPct = totalMs > 0 ? (startMs - series[0].t) / totalMs * 100 : 0
+    const endPct   = totalMs > 0 ? (endMs   - series[0].t) / totalMs * 100 : 100
 
     isZoomed.value = startPct > 0.5 || endPct < 99.5
 
@@ -371,22 +408,37 @@ function renderStationChart(s) {
       return
     }
 
-    const total = series.length
-    const lo = Math.max(0,     Math.floor(startPct / 100 * total))
-    const hi = Math.min(total, Math.ceil(endPct   / 100 * total))
+    // Find index bounds by timestamp
+    let lo = 0
+    while (lo < series.length - 1 && series[lo].t < startMs) lo++
+    lo = Math.max(0, lo - 1)
+    let hi = series.length
+    while (hi > 1 && series[hi - 1].t > endMs) hi--
+    hi = Math.min(series.length, hi + 1)
 
     const { data, raw } = buildSeriesData(series, lo, hi, TARGET_PTS)
     isShowingRaw.value = raw
-    // Smooth when zoomed in far enough to show individual points
     chart.setOption({ series: [{ data, smooth: raw }] })
   })
 }
 
 watch(activeStation, async (s) => {
-  if (!s) return
+  if (!s) {
+    // v-if will destroy the DOM element; dispose chart to avoid stale instance
+    if (chart) { chart.dispose(); chart = null }
+    return
+  }
   await nextTick()
-  if (!chart) buildChart()
+  // Always rebuild: v-if may have recreated the DOM element since last render
+  buildChart()
   renderStationChart(s)
+})
+
+watch(isDark, async () => {
+  if (!chart || !activeStation.value) return
+  await nextTick()
+  buildChart()
+  renderStationChart(activeStation.value)
 })
 
 function onResize() { chart?.resize() }
@@ -421,8 +473,8 @@ function dbmStyle(dbm) {
 .mb24 { margin-bottom: 24px; }
 
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.page-title  { font-size: 24px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
-.page-sub    { font-size: 13px; color: #64748b; margin-top: 3px; }
+.page-title  { font-size: 24px; font-weight: 700; color: var(--c-text); letter-spacing: -0.3px; }
+.page-sub    { font-size: 13px; color: var(--c-text-dim); margin-top: 3px; }
 
 /* ── Search bar ── */
 .search-bar {
@@ -430,8 +482,8 @@ function dbmStyle(dbm) {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  background: #0a0f1e;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   padding: 14px 18px;
 }
@@ -439,15 +491,15 @@ function dbmStyle(dbm) {
 .freq-input-wrap {
   display: flex;
   align-items: center;
-  background: #060c18;
-  border: 1px solid #1e293b;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
   border-radius: 9px;
   overflow: hidden;
 }
 .freq-input {
   background: transparent;
   border: none;
-  color: #e2e8f0;
+  color: var(--c-text-2);
   font-size: 15px;
   font-weight: 600;
   padding: 8px 12px;
@@ -459,44 +511,86 @@ function dbmStyle(dbm) {
 .freq-unit {
   padding: 0 12px 0 0;
   font-size: 12px;
-  color: #475569;
+  color: var(--c-text-faint);
 }
+
+.bw-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--c-deep);
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.bw-input {
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 10px;
+  width: 100px;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+.bw-input::-webkit-inner-spin-button { opacity: 0; }
+.bw-unit {
+  padding: 0 10px 0 0;
+  font-size: 12px;
+  color: var(--c-text-faint);
+}
+.bw-presets {
+  display: flex;
+  gap: 4px;
+}
+.bw-btn {
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--c-border);
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.bw-btn:hover  { border-color: var(--c-border-str); color: var(--c-text-muted); }
+.bw-btn.active { background: var(--c-accent-bgx); border-color: var(--c-accent); color: var(--c-accent); }
 
 .time-presets { display: flex; gap: 5px; }
 .preset-btn {
   padding: 6px 12px; border-radius: 8px;
-  border: 1px solid #1e293b; background: transparent;
-  color: #64748b; font-size: 12px; cursor: pointer; transition: all .15s;
+  border: 1px solid var(--c-border); background: transparent;
+  color: var(--c-text-dim); font-size: 12px; cursor: pointer; transition: all .15s;
 }
-.preset-btn:hover  { border-color: #334155; color: #94a3b8; }
-.preset-btn.active { background: rgba(56,189,248,0.1); border-color: #38bdf8; color: #38bdf8; }
+.preset-btn:hover  { border-color: var(--c-border-str); color: var(--c-text-muted); }
+.preset-btn.active { background: var(--c-accent-bgx); border-color: var(--c-accent); color: var(--c-accent); }
 
 .custom-range { display: flex; align-items: center; gap: 8px; }
 
 .query-btn {
   padding: 8px 20px; border-radius: 9px;
-  background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.4); color: #38bdf8;
+  background: var(--c-accent-bgh); border: 1px solid var(--c-accent-bd); color: var(--c-accent);
   font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
   display: flex; align-items: center; gap: 8px; min-width: 60px; justify-content: center;
 }
-.query-btn:hover:not(:disabled) { background: rgba(56,189,248,0.2); }
+.query-btn:hover:not(:disabled) { background: var(--c-accent-bds); }
 .query-btn:disabled { opacity: .5; cursor: not-allowed; }
 .spinner {
   display: inline-block; width: 14px; height: 14px;
-  border: 2px solid #1e293b; border-top-color: #38bdf8;
+  border: 2px solid var(--c-border); border-top-color: var(--c-accent);
   border-radius: 50%; animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Error / empty ── */
 .error-bar {
-  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
-  border-radius: 10px; padding: 10px 16px; color: #f87171; font-size: 13px;
+  background: var(--c-red-bg); border: 1px solid var(--c-red-bd);
+  border-radius: 10px; padding: 10px 16px; color: var(--c-red); font-size: 13px;
 }
 .empty-state { text-align: center; padding: 80px 0; }
 .empty-icon  { font-size: 48px; opacity: .3; margin-bottom: 12px; }
-.empty-text  { font-size: 15px; color: #475569; }
-.empty-hint  { font-size: 12px; color: #334155; margin-top: 4px; }
+.empty-text  { font-size: 15px; color: var(--c-text-faint); }
+.empty-hint  { font-size: 12px; color: var(--c-border-str); margin-top: 4px; }
 
 /* ── Result meta chips ── */
 .result-meta { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -504,31 +598,32 @@ function dbmStyle(dbm) {
   font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
   border: 1px solid;
 }
-.chip-freq    { background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.3); color: #38bdf8; }
-.chip-range   { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.3); color: #818cf8; }
-.chip-stations{ background: rgba(34,197,94,0.08);  border-color: rgba(34,197,94,0.3);  color: #4ade80; }
+.chip-freq    { background: var(--c-accent-bgx); border-color: var(--c-accent-bds); color: var(--c-accent); }
+.chip-range   { background: var(--c-indigo-bg); border-color: var(--c-indigo-bd); color: var(--c-indigo); }
+.chip-stations{ background: var(--c-green-bg); border-color: var(--c-green-bd); color: var(--c-green); }
+.chip-bw      { background: var(--c-gold-bg); border-color: var(--c-gold-bd); color: var(--c-gold); }
 
 /* ── Rank table ── */
 .table-card {
-  background: #080e1c;
-  border: 1px solid #1e293b;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   overflow: hidden;
 }
 .table-header {
-  padding: 12px 18px; font-size: 13px; color: #64748b; font-weight: 500;
-  border-bottom: 1px solid #1e293b;
+  padding: 12px 18px; font-size: 13px; color: var(--c-text-dim); font-weight: 500;
+  border-bottom: 1px solid var(--c-border);
 }
-.table-header .sub { color: #334155; font-weight: 400; margin-left: 6px; }
+.table-header .sub { color: var(--c-border-str); font-weight: 400; margin-left: 6px; }
 
 .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rank-table th {
-  background: #060c18; padding: 9px 16px;
+  background: var(--c-bg); padding: 9px 16px;
   text-align: left; font-size: 11px; font-weight: 600;
-  color: #475569; text-transform: uppercase; letter-spacing: .4px;
-  border-bottom: 1px solid #1e293b;
+  color: var(--c-text-faint); text-transform: uppercase; letter-spacing: .4px;
+  border-bottom: 1px solid var(--c-border);
 }
-.rank-table td { padding: 10px 16px; border-bottom: 1px solid #0f172a; color: #94a3b8; }
+.rank-table td { padding: 10px 16px; border-bottom: 1px solid var(--c-raised); color: var(--c-text-muted); }
 .rank-row:last-child td { border-bottom: none; }
 .rank-row { cursor: pointer; transition: background .1s; }
 .rank-row:hover td { background: rgba(255,255,255,0.015); }
@@ -538,49 +633,49 @@ function dbmStyle(dbm) {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 50%;
   font-size: 11px; font-weight: 700;
-  background: #1e293b; color: #475569;
+  background: var(--c-border); color: var(--c-text-faint);
 }
-.rank-badge.gold   { background: rgba(251,191,36,0.15); color: #fbbf24; }
-.rank-badge.silver { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.rank-badge.gold   { background: rgba(251,191,36,0.15); color: var(--c-gold); }
+.rank-badge.silver { background: rgba(148,163,184,0.15); color: var(--c-text-muted); }
 .rank-badge.bronze { background: rgba(180,83,9,0.15); color: #f97316; }
 
-.stn-id   { font-size: 13px; font-weight: 600; color: #e2e8f0; }
-.stn-name { font-size: 11px; color: #475569; margin-top: 1px; }
+.stn-id   { font-size: 13px; font-weight: 600; color: var(--c-text-2); }
+.stn-name { font-size: 11px; color: var(--c-text-faint); margin-top: 1px; }
 .cell-dbm { font-weight: 600; font-variant-numeric: tabular-nums; }
-.cell-dbm-med { color: #64748b; font-variant-numeric: tabular-nums; }
-.cell-frames  { color: #475569; }
+.cell-dbm-med { color: var(--c-text-dim); font-variant-numeric: tabular-nums; }
+.cell-frames  { color: var(--c-text-faint); }
 
 .select-btn {
   padding: 3px 10px; border-radius: 6px; font-size: 11px;
-  border: 1px solid #1e293b; background: transparent; color: #64748b;
+  border: 1px solid var(--c-border); background: transparent; color: var(--c-text-dim);
   cursor: pointer; transition: all .12s;
 }
-.select-btn:hover, .select-btn.active { border-color: #38bdf8; color: #38bdf8; }
+.select-btn:hover, .select-btn.active { border-color: var(--c-accent); color: var(--c-accent); }
 
 /* ── Chart ── */
 .chart-card {
-  background: #0a0f1e;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   overflow: hidden;
 }
 .chart-topbar {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 20px 12px; border-bottom: 1px solid #1e293b;
+  padding: 14px 20px 12px; border-bottom: 1px solid var(--c-border);
 }
-.chart-title   { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #e2e8f0; }
-.chart-sname   { font-weight: 400; color: #64748b; }
+.chart-title   { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--c-text-2); }
+.chart-sname   { font-weight: 400; color: var(--c-text-dim); }
 .chart-actions { display: flex; align-items: center; gap: 12px; }
-.chart-meta    { font-size: 12px; color: #475569; }
+.chart-meta    { font-size: 12px; color: var(--c-text-faint); }
 .zoom-badge    {
   font-size: 11px; padding: 2px 8px; border-radius: 6px;
-  background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24;
+  background: var(--c-gold-bg); border: 1px solid var(--c-gold-bd); color: var(--c-gold);
 }
 .action-btn {
   padding: 4px 12px; border-radius: 7px;
-  border: 1px solid #334155; background: transparent; color: #64748b;
+  border: 1px solid var(--c-border-str); background: transparent; color: var(--c-text-dim);
   font-size: 12px; cursor: pointer; transition: all .15s;
 }
-.action-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+.action-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
 .chart-area { width: 100%; height: 400px; }
 </style>

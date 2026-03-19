@@ -118,7 +118,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { useTheme } from '../composables/useTheme.js'
 import { getStations, listSnapshots, getSnapshot } from '../api/index.js'
+
+const { isDark, chartColors } = useTheme()
 
 // ── Stations ───────────────────────────────────────────────────────────────
 
@@ -279,6 +282,12 @@ async function stepFrame(dir) {
 
 onUnmounted(stopPlay)
 
+watch(isDark, async () => {
+  if (chart) { chart.dispose(); chart = null }
+  await nextTick()
+  renderChart()
+})
+
 // ── Decode gzip frame ──────────────────────────────────────────────────────
 
 function decodeFrame(frame) {
@@ -305,139 +314,10 @@ async function resolveStream(streamData) {
   const buf = new Uint8Array(total)
   let off = 0
   for (const c of chunks) { buf.set(c, off); off += c.length }
-  const floats = new Float32Array(buf.buffer)
-  return Array.from(floats)
+  return new Float32Array(buf.buffer)
 }
 
-// ── ECharts ────────────────────────────────────────────────────────────────
-
-const chartEl = ref(null)
-let chart = null
-
-function getOrCreateChart() {
-  if (!chart && chartEl.value) {
-    chart = echarts.init(chartEl.value, 'dark')
-    window.addEventListener('resize', () => chart?.resize())
-  }
-  return chart
-}
-
-async function renderChart() {
-  const c = getOrCreateChart()
-  if (!c) return
-
-  if (!chartData.value) {
-    c.clear()
-    return
-  }
-
-  const { frame } = chartData.value
-  const levels = await resolveStream(chartData.value)
-
-  const freqMhz = Array.from({ length: levels.length }, (_, i) =>
-    ((frame.freq_start_hz + i * frame.freq_step_hz) / 1e6).toFixed(4)
-  )
-
-  c.setOption({
-    backgroundColor: 'transparent',
-    animation: false,
-    grid: { top: 30, right: 20, bottom: 40, left: 55 },
-    xAxis: {
-      type: 'category',
-      data: freqMhz,
-      axisLabel: { color: '#94a3b8', fontSize: 10, interval: Math.floor(levels.length / 8) },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      name: 'MHz',
-      nameTextStyle: { color: '#64748b' },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'dBm',
-      nameTextStyle: { color: '#64748b' },
-      axisLabel: { color: '#94a3b8', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#1e293b' } },
-    },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#0f172a',
-      borderColor: '#1e293b',
-      textStyle: { color: '#e2e8f0', fontSize: 11 },
-      formatter: p => `${p[0].name} MHz<br/>${p[0].value.toFixed(1)} dBm`,
-    },
-    series: [{
-      name: '电平',
-      type: 'line',
-      data: levels,
-      showSymbol: false,
-      lineStyle: { color: '#38bdf8', width: 1 },
-      areaStyle: { color: 'rgba(56,189,248,0.06)' },
-    }],
-  })
-}
-
-async function renderCompareChart(fa, fb) {
-  const c = getOrCreateChart()
-  if (!c) return
-
-  const [lvA, lvB] = await Promise.all([
-    _decodeFrameData(fa),
-    _decodeFrameData(fb),
-  ])
-
-  const freqMhz = Array.from({ length: lvA.length }, (_, i) =>
-    ((fa.freq_start_hz + i * fa.freq_step_hz) / 1e6).toFixed(4)
-  )
-
-  c.setOption({
-    backgroundColor: 'transparent',
-    animation: false,
-    legend: {
-      data: ['A 帧', 'B 帧'],
-      textStyle: { color: '#94a3b8' },
-      top: 4,
-    },
-    grid: { top: 40, right: 20, bottom: 40, left: 55 },
-    xAxis: {
-      type: 'category',
-      data: freqMhz,
-      axisLabel: { color: '#94a3b8', fontSize: 10, interval: Math.floor(lvA.length / 8) },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      name: 'MHz',
-      nameTextStyle: { color: '#64748b' },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'dBm',
-      nameTextStyle: { color: '#64748b' },
-      axisLabel: { color: '#94a3b8', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#1e293b' } },
-    },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#0f172a',
-      borderColor: '#1e293b',
-      textStyle: { color: '#e2e8f0', fontSize: 11 },
-    },
-    series: [
-      {
-        name: 'A 帧',
-        type: 'line',
-        data: lvA,
-        showSymbol: false,
-        lineStyle: { color: '#38bdf8', width: 1.5 },
-      },
-      {
-        name: 'B 帧',
-        type: 'line',
-        data: lvB,
-        showSymbol: false,
-        lineStyle: { color: '#f59e0b', width: 1.5 },
-      },
-    ],
-  })
-}
-
-async function _decodeFrameData(frame) {
+async function _decodeToArrays(frame) {
   const b64 = frame.levels_dbm_b64
   const binaryStr = atob(b64)
   const bytes = new Uint8Array(binaryStr.length)
@@ -457,7 +337,215 @@ async function _decodeFrameData(frame) {
   const buf = new Uint8Array(total)
   let off = 0
   for (const c of chunks) { buf.set(c, off); off += c.length }
-  return Array.from(new Float32Array(buf.buffer))
+  const levels = new Float32Array(buf.buffer)
+  const step   = frame.freq_step_hz / 1e6
+  const start  = frame.freq_start_hz / 1e6
+  const freqs  = new Float32Array(levels.length)
+  for (let i = 0; i < levels.length; i++) freqs[i] = start + i * step
+  return { freqs, levels }
+}
+
+// ── Max-pool downsampling ──────────────────────────────────────────────────
+
+const TARGET_POINTS = 2000
+
+function maxPoolArrays(freqs, levels, lo, hi, target) {
+  const len = hi - lo
+  if (len <= target) {
+    const out = new Array(len)
+    for (let i = 0; i < len; i++) out[i] = [freqs[lo + i], levels[lo + i]]
+    return { data: out, raw: true }
+  }
+  const out = new Array(target)
+  const binSize = len / target
+  for (let i = 0; i < target; i++) {
+    const binLo = Math.floor(i * binSize)
+    const binHi = Math.min(Math.floor((i + 1) * binSize), len)
+    let maxVal = -Infinity
+    for (let j = binLo; j < binHi; j++) {
+      if (levels[lo + j] > maxVal) maxVal = levels[lo + j]
+    }
+    const center = lo + Math.floor((binLo + binHi) / 2)
+    out[i] = [freqs[center], maxVal]
+  }
+  return { data: out, raw: false }
+}
+
+// ── ECharts ────────────────────────────────────────────────────────────────
+
+const chartEl = ref(null)
+let chart = null
+let _pbFreqs  = null   // Float32Array of MHz values for current single frame
+let _pbLevels = null   // Float32Array of dBm values
+
+function getOrCreateChart() {
+  if (!chart && chartEl.value) {
+    chart = echarts.init(chartEl.value, chartColors.value.ecTheme)
+    window.addEventListener('resize', () => chart?.resize())
+  }
+  return chart
+}
+
+async function renderChart() {
+  const c = getOrCreateChart()
+  if (!c) return
+
+  if (!chartData.value) {
+    c.clear()
+    return
+  }
+
+  const { frame } = chartData.value
+  const { freqs, levels } = await _decodeToArrays(frame)
+  _pbFreqs  = freqs
+  _pbLevels = levels
+
+  const { data: overviewData } = maxPoolArrays(freqs, levels, 0, freqs.length, TARGET_POINTS)
+  const minFreq = freqs[0]
+  const maxFreq = freqs[freqs.length - 1]
+
+  c.setOption({
+    backgroundColor: 'transparent',
+    animation: false,
+    grid: { top: 30, right: 20, bottom: 54, left: 55 },
+    xAxis: {
+      type: 'value',
+      min: minFreq, max: maxFreq,
+      name: 'MHz',
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+      axisLabel: { color: chartColors.value.tooltipMuted, fontSize: 10, formatter: v => v.toFixed(0) },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'dBm',
+      nameTextStyle: { color: chartColors.value.axisLabel },
+      axisLabel: { color: chartColors.value.tooltipMuted, fontSize: 11 },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine } },
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: chartColors.value.tooltipBg,
+      borderColor: chartColors.value.tooltipBorder,
+      textStyle: { color: chartColors.value.tooltipText, fontSize: 11 },
+      formatter: ([p]) => `${p.data[0].toFixed(4)} MHz<br/>${p.data[1].toFixed(1)} dBm`,
+    },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      {
+        type: 'slider', xAxisIndex: 0, bottom: 6, height: 22,
+        fillerColor: chartColors.value.dzFiller,
+        borderColor: chartColors.value.axisLine,
+        handleStyle: { color: chartColors.value.accent },
+        textStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+      },
+    ],
+    series: [{
+      name: '电平',
+      type: 'line',
+      data: overviewData,
+      sampling: null,
+      symbol: 'none',
+      lineStyle: { color: chartColors.value.accent, width: 1 },
+      areaStyle: { color: chartColors.value.accentFill[0] },
+    }],
+  }, true)
+
+  c.off('datazoom')
+  c.on('datazoom', (e) => {
+    if (!_pbFreqs) return
+    const ev = e.batch?.[0] ?? e
+    const startMHz = ev.startValue
+    const endMHz   = ev.endValue
+    if (startMHz == null || endMHz == null) return
+
+    const span = _pbFreqs[_pbFreqs.length - 1] - _pbFreqs[0]
+    if (span <= 0) return
+    const step = span / (_pbFreqs.length - 1)
+    const lo = Math.max(0, Math.floor((startMHz - _pbFreqs[0]) / step))
+    const hi = Math.min(_pbFreqs.length, Math.ceil((endMHz - _pbFreqs[0]) / step) + 1)
+    const { data } = maxPoolArrays(_pbFreqs, _pbLevels, lo, hi, TARGET_POINTS)
+    c.setOption({ series: [{ data }] })
+  })
+}
+
+async function renderCompareChart(fa, fb) {
+  const c = getOrCreateChart()
+  if (!c) return
+
+  const [arrA, arrB] = await Promise.all([
+    _decodeToArrays(fa),
+    _decodeToArrays(fb),
+  ])
+
+  const { data: dataA } = maxPoolArrays(arrA.freqs, arrA.levels, 0, arrA.freqs.length, TARGET_POINTS)
+  const { data: dataB } = maxPoolArrays(arrB.freqs, arrB.levels, 0, arrB.freqs.length, TARGET_POINTS)
+  const minFreq = Math.min(arrA.freqs[0], arrB.freqs[0])
+  const maxFreq = Math.max(arrA.freqs[arrA.freqs.length - 1], arrB.freqs[arrB.freqs.length - 1])
+
+  c.off('datazoom')
+  c.setOption({
+    backgroundColor: 'transparent',
+    animation: false,
+    legend: {
+      data: ['A 帧', 'B 帧'],
+      textStyle: { color: chartColors.value.tooltipMuted },
+      top: 4,
+    },
+    grid: { top: 40, right: 20, bottom: 54, left: 55 },
+    xAxis: {
+      type: 'value',
+      min: minFreq, max: maxFreq,
+      name: 'MHz',
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+      axisLabel: { color: chartColors.value.tooltipMuted, fontSize: 10, formatter: v => v.toFixed(0) },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'dBm',
+      nameTextStyle: { color: chartColors.value.axisLabel },
+      axisLabel: { color: chartColors.value.tooltipMuted, fontSize: 11 },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine } },
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: chartColors.value.tooltipBg,
+      borderColor: chartColors.value.tooltipBorder,
+      textStyle: { color: chartColors.value.tooltipText, fontSize: 11 },
+      formatter: (params) => params.map(p => `${p.seriesName}: ${p.data[1].toFixed(1)} dBm`).join('<br/>'),
+    },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      {
+        type: 'slider', xAxisIndex: 0, bottom: 6, height: 22,
+        fillerColor: chartColors.value.dzFiller,
+        borderColor: chartColors.value.axisLine,
+        handleStyle: { color: chartColors.value.accent },
+        textStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+      },
+    ],
+    series: [
+      {
+        name: 'A 帧',
+        type: 'line',
+        data: dataA,
+        sampling: null,
+        symbol: 'none',
+        lineStyle: { color: chartColors.value.accent, width: 1.5 },
+      },
+      {
+        name: 'B 帧',
+        type: 'line',
+        data: dataB,
+        sampling: null,
+        symbol: 'none',
+        lineStyle: { color: '#f59e0b', width: 1.5 },
+      },
+    ],
+  }, true)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -472,14 +560,14 @@ function fmtTime(ms) {
 </script>
 
 <style scoped>
-.pb-view { display: flex; flex-direction: column; gap: 18px; }
+.pb-view { display: flex; flex-direction: column; gap: 18px; transition: background 0.2s, border-color 0.2s, color 0.2s; }
 
-.pb-header h1 { font-size: 22px; font-weight: 700; color: #f1f5f9; }
-.pb-header .page-sub { font-size: 13px; color: #475569; margin-top: 4px; }
+.pb-header h1 { font-size: 22px; font-weight: 700; color: var(--c-text); }
+.pb-header .page-sub { font-size: 13px; color: var(--c-text-faint); margin-top: 4px; }
 
 .card {
-  background: #0a1628;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 10px;
   padding: 18px;
 }
@@ -487,10 +575,10 @@ function fmtTime(ms) {
 /* Query bar */
 .query-bar { padding: 14px 18px; }
 .qb-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.qb-label { font-size: 12px; color: #64748b; white-space: nowrap; }
+.qb-label { font-size: 12px; color: var(--c-text-dim); white-space: nowrap; }
 .sel, .dt-input {
-  background: #0f172a; border: 1px solid #1e293b; border-radius: 6px;
-  color: #e2e8f0; padding: 6px 10px; font-size: 13px;
+  background: var(--c-raised); border: 1px solid var(--c-border); border-radius: 6px;
+  color: var(--c-text-2); padding: 6px 10px; font-size: 13px;
 }
 .sel { min-width: 140px; }
 .dt-input { min-width: 175px; }
@@ -501,9 +589,9 @@ function fmtTime(ms) {
   transition: opacity .15s;
 }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-primary { background: #0ea5e9; color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #38bdf8; }
-.btn-danger { background: #dc2626; color: #fff; }
+.btn-primary { background: var(--c-accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--c-accent); opacity: .9; }
+.btn-danger { background: var(--c-red); color: #fff; }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 
 /* Body layout */
@@ -513,38 +601,38 @@ function fmtTime(ms) {
 .frame-list { width: 230px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .fl-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 14px; border-bottom: 1px solid #1e293b;
+  padding: 12px 14px; border-bottom: 1px solid var(--c-border);
 }
-.fl-title { font-size: 13px; font-weight: 600; color: #94a3b8; }
-.compare-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; cursor: pointer; }
+.fl-title { font-size: 13px; font-weight: 600; color: var(--c-text-muted); }
+.compare-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--c-text-dim); cursor: pointer; }
 .fl-scroll { flex: 1; overflow-y: auto; padding: 6px 0; }
 .fl-item {
   padding: 8px 14px; cursor: pointer; border-left: 3px solid transparent;
   transition: background .1s;
 }
 .fl-item:hover { background: rgba(255,255,255,0.03); }
-.fl-active { background: rgba(56,189,248,0.06); border-left-color: #38bdf8; }
-.fl-cmp-a { background: rgba(56,189,248,0.06); border-left-color: #38bdf8; }
-.fl-cmp-b { background: rgba(245,158,11,0.06); border-left-color: #f59e0b; }
-.fl-time { font-size: 12px; color: #e2e8f0; font-variant-numeric: tabular-nums; }
-.fl-meta { font-size: 11px; color: #475569; display: flex; gap: 8px; margin-top: 2px; }
+.fl-active { background: var(--c-accent-bg); border-left-color: var(--c-accent); }
+.fl-cmp-a { background: var(--c-accent-bg); border-left-color: var(--c-accent); }
+.fl-cmp-b { background: var(--c-gold-bg); border-left-color: var(--c-gold); }
+.fl-time { font-size: 12px; color: var(--c-text-2); font-variant-numeric: tabular-nums; }
+.fl-meta { font-size: 11px; color: var(--c-text-faint); display: flex; gap: 8px; margin-top: 2px; }
 
 .tag-a, .tag-b {
   font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;
 }
-.tag-a { background: rgba(56,189,248,0.2); color: #38bdf8; }
-.tag-b { background: rgba(245,158,11,0.2); color: #f59e0b; }
+.tag-a { background: var(--c-accent-bgh); color: var(--c-accent); }
+.tag-b { background: var(--c-gold-bg); color: var(--c-gold); }
 
 /* Chart area */
 .chart-area { flex: 1; display: flex; flex-direction: column; gap: 10px; }
-.chart-info { display: flex; gap: 12px; font-size: 12px; color: #64748b; }
+.chart-info { display: flex; gap: 12px; font-size: 12px; color: var(--c-text-dim); }
 .chart-canvas { flex: 1; min-height: 0; }
-.chart-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 14px; }
+.chart-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--c-text-ghost); font-size: 14px; }
 
 /* Playback controls */
-.pb-controls { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid #1e293b; }
-.speed-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; margin-left: auto; }
-.sel-sm { background: #0f172a; border: 1px solid #1e293b; border-radius: 4px; color: #e2e8f0; padding: 3px 6px; font-size: 12px; }
+.pb-controls { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--c-border); }
+.speed-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--c-text-dim); margin-left: auto; }
+.sel-sm { background: var(--c-raised); border: 1px solid var(--c-border); border-radius: 4px; color: var(--c-text-2); padding: 3px 6px; font-size: 12px; }
 
-.empty-hint { color: #475569; text-align: center; padding: 40px; }
+.empty-hint { color: var(--c-text-faint); text-align: center; padding: 40px; }
 </style>

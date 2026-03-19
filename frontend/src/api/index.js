@@ -67,15 +67,16 @@ export function deleteBandRule(ruleId) {
  * @param {string[]} [stationIds]  Filter to specific stations (optional)
  * @returns {Promise<{freq_hz, start_ms, end_ms, stations: Array}>}
  */
-export function queryFreqTimeseries(freqHz, startMs, endMs, stationIds = []) {
+export function queryFreqTimeseries(freqHz, startMs, endMs, stationIds = [], bandwidthHz = 25_000) {
   return http.get('/spectrum/freq-timeseries', {
     params: {
       freq_hz: freqHz,
       start_ms: startMs,
       end_ms: endMs,
       station_ids: stationIds.join(','),
+      bandwidth_hz: bandwidthHz,
     },
-    timeout: 30_000,   // may need extra time for large time ranges
+    timeout: 30_000,
   }).then(r => r.data)
 }
 

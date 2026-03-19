@@ -2,22 +2,143 @@
   <div class="task-page">
     <div class="page-header mb24">
       <div>
-        <h2 class="page-title">任务下发</h2>
-        <p class="page-sub">向边缘站点下发专项扫描任务，实时跟踪执行进度</p>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p class="page-sub">{{ pageSub }}</p>
       </div>
-      <button class="new-btn" @click="openCreateDialog">+ 新建任务</button>
+      <!-- "新建任务" button only on generic /tasks page (no type param) -->
+      <button v-if="!pageType" class="new-btn" @click="openCreateDialog">+ 新建任务</button>
     </div>
 
-    <!-- ── Task list ── -->
+    <!-- ── Inline scan form (shown when a specific type page is active) ── -->
+    <div v-if="pageType" class="scan-card mb24">
+      <div class="scan-card-header">新建扫描</div>
+      <div class="scan-card-body">
+
+        <!-- Station selector -->
+        <div class="field">
+          <label class="field-label">目标站点 <span class="req">*</span></label>
+          <div class="station-checks">
+            <label v-for="s in stations" :key="s.station_id" class="stn-check">
+              <input type="checkbox" :value="s.station_id" v-model="newTask.station_ids" />
+              <span :class="s.online ? 'online' : 'offline'">● </span>
+              {{ s.name || s.station_id }}
+              <span v-if="!s.online" class="offline-note">(离线)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Params: band_scan -->
+        <template v-if="pageType === 'band_scan'">
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">起始频率 (MHz)</label>
+              <input v-model.number="p.start_mhz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">截止频率 (MHz)</label>
+              <input v-model.number="p.stop_mhz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">步进 (kHz)</label>
+              <input v-model.number="p.step_khz" class="num-input" type="number" step="1" />
+            </div>
+          </div>
+        </template>
+
+        <!-- Params: channel_scan -->
+        <template v-if="pageType === 'channel_scan'">
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">起始频率 (MHz)</label>
+              <input v-model.number="p.start_mhz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">截止频率 (MHz)</label>
+              <input v-model.number="p.stop_mhz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">信道间距 (kHz)</label>
+              <input v-model.number="p.step_khz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">驻留时间 (ms)</label>
+              <input v-model.number="p.dwell_ms" class="num-input" type="number" step="1" />
+            </div>
+          </div>
+        </template>
+
+        <!-- Params: if_analysis -->
+        <template v-if="pageType === 'if_analysis'">
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">中心频率 (MHz)</label>
+              <input v-model.number="p.center_mhz" class="num-input" type="number" step="0.001" />
+            </div>
+            <div class="field">
+              <label class="field-label">分析带宽 (kHz)</label>
+              <input v-model.number="p.span_khz" class="num-input" type="number" step="100" />
+            </div>
+            <div class="field">
+              <label class="field-label">解调带宽 (kHz)</label>
+              <input v-model.number="p.demod_bw_khz" class="num-input" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label class="field-label">解调模式</label>
+              <select v-model="p.demod_mode" class="num-input">
+                <option>FM</option><option>AM</option><option>USB</option><option>LSB</option>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="createError" class="create-error">⚠ {{ createError }}</div>
+
+        <div class="scan-actions">
+          <button class="submit-btn" :disabled="createLoading || !canCreate" @click="submitTask">
+            <span v-if="createLoading" class="spinner" />
+            <span v-else>开始扫描</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Inline result: most recent submitted task ── -->
+      <div v-if="activeTask" class="active-task">
+        <div class="at-header">
+          <span class="at-label">当前任务</span>
+          <span class="at-id">{{ activeTask.task_id }}</span>
+          <span class="status-dot" :class="activeTask.status" />
+          <span class="at-status">{{ statusLabel(activeTask.status) }}</span>
+          <span v-if="polling" class="polling-note">查询结果中…</span>
+        </div>
+        <div v-if="activeTask.stations && activeTask.stations.length" class="station-list">
+          <div v-for="s in activeTask.stations" :key="s.station_id" class="station-item">
+            <div class="si-header">
+              <span class="si-id">{{ s.station_id }}</span>
+              <span class="si-status" :class="s.status">{{ statusLabel(s.status) }}</span>
+              <span v-if="s.finished_at" class="si-ts">{{ fmtTime(s.finished_at) }}</span>
+            </div>
+            <div v-if="s.error" class="si-error">⚠ {{ s.error }}</div>
+            <div v-if="s.result_b64" class="si-chart-wrap">
+              <SpectrumMini :b64="s.result_b64" :meta="parseJson(s.result_meta)" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Task history ── -->
     <div class="table-card">
       <div class="table-topbar">
-        <span class="table-title">历史任务</span>
+        <span class="table-title">
+          历史任务
+          <span v-if="pageType" class="table-type-badge">{{ pageTitle }}</span>
+        </span>
         <button class="refresh-btn" :class="{ spinning: listLoading }" @click="fetchList">↻</button>
       </div>
-      <div v-if="listLoading && tasks.length === 0" class="loading-row">加载中…</div>
-      <div v-if="!listLoading && tasks.length === 0" class="empty-row">暂无任务记录</div>
+      <div v-if="listLoading && filteredTasks.length === 0" class="loading-row">加载中…</div>
+      <div v-if="!listLoading && filteredTasks.length === 0" class="empty-row">暂无任务记录</div>
 
-      <table v-if="tasks.length > 0" class="task-table">
+      <table v-if="filteredTasks.length > 0" class="task-table">
         <thead>
           <tr>
             <th>任务 ID</th>
@@ -29,7 +150,7 @@
           </tr>
         </thead>
         <tbody>
-          <template v-for="t in tasks" :key="t.task_id">
+          <template v-for="t in filteredTasks" :key="t.task_id">
             <tr class="task-row" @click="toggleDetail(t.task_id)">
               <td class="cell-id">{{ t.task_id }}</td>
               <td><span class="type-badge">{{ t.type }}</span></td>
@@ -61,7 +182,6 @@
                         </div>
                         <div v-if="s.error" class="si-error">⚠ {{ s.error }}</div>
                         <div v-if="s.result_meta" class="si-meta">{{ s.result_meta }}</div>
-                        <!-- Spectrum preview chart -->
                         <div v-if="s.result_b64" class="si-chart-wrap">
                           <SpectrumMini :b64="s.result_b64" :meta="parseJson(s.result_meta)" />
                         </div>
@@ -76,8 +196,8 @@
       </table>
     </div>
 
-    <!-- ── Create task dialog ── -->
-    <div v-if="showCreate" class="dialog-backdrop" @click.self="showCreate = false">
+    <!-- ── Create task dialog (generic page only) ── -->
+    <div v-if="showCreate && !pageType" class="dialog-backdrop" @click.self="showCreate = false">
       <div class="dialog">
         <div class="dialog-header">
           <h3>新建扫描任务</h3>
@@ -189,25 +309,31 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, defineComponent } from 'vue'
 import * as echarts from 'echarts'
+import { useRoute } from 'vue-router'
+import { useTheme } from '../composables/useTheme.js'
 import { getStations, listTasks, createTask, getTask } from '../api/index.js'
 
+const route = useRoute()
+
 const TASK_TYPES = [
-  { label: '全频段扫描', value: 'band_scan'    },
+  { label: '频段扫描',   value: 'band_scan'    },
   { label: '信道扫描',   value: 'channel_scan' },
   { label: 'IF 分析',    value: 'if_analysis'  },
 ]
 
-const tasks       = ref([])
-const listLoading = ref(false)
-const expanded    = ref(null)
-const detail      = ref(null)
+const tasks         = ref([])
+const listLoading   = ref(false)
+const expanded      = ref(null)
+const detail        = ref(null)
 const detailLoading = ref(false)
-const stations    = ref([])
-const showCreate  = ref(false)
+const stations      = ref([])
+const showCreate    = ref(false)
 const createLoading = ref(false)
-const createError = ref('')
+const createError   = ref('')
+const activeTask    = ref(null)   // most recently submitted task (inline result)
+const polling       = ref(false)  // true while polling for task result
 
 const newTask = ref({ type: 'band_scan', station_ids: [] })
 const p       = ref({
@@ -215,9 +341,34 @@ const p       = ref({
   dwell_ms: 50, center_mhz: 100, span_khz: 200, demod_bw_khz: 15, demod_mode: 'FM',
 })
 
-const canCreate = computed(() =>
-  newTask.value.station_ids.length > 0
+// ── Computed ──────────────────────────────────────────────────────────────────
+
+const PAGE_TITLES = { band_scan: '频段扫描', channel_scan: '信道扫描', if_analysis: '中频分析' }
+const PAGE_SUBS   = {
+  band_scan:    '选择站点、设置频率范围，执行宽带全景扫描',
+  channel_scan: '选择站点、设置信道参数，逐点测量信道电平',
+  if_analysis:  '选择站点、设置中心频率，执行中频窄带分析',
+}
+
+const pageType = computed(() => {
+  const t = route.query.type
+  return TASK_TYPES.some(x => x.value === t) ? t : null
+})
+
+const pageTitle = computed(() => PAGE_TITLES[pageType.value] || '任务下发')
+const pageSub   = computed(() => PAGE_SUBS[pageType.value]   || '向边缘站点下发专项扫描任务，实时跟踪执行进度')
+
+const canCreate = computed(() => newTask.value.station_ids.length > 0)
+
+// Filter task history by current type page
+const filteredTasks = computed(() =>
+  pageType.value
+    ? tasks.value.filter(t => t.type === pageType.value)
+    : tasks.value
 )
+
+// Keep newTask.type in sync with page type
+watch(pageType, (t) => { if (t) newTask.value.type = t }, { immediate: true })
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -244,15 +395,21 @@ async function toggleDetail(taskId) {
 }
 
 let refreshTimer = null
+let pollTimer    = null
+
 onMounted(async () => {
   fetchList()
   const data = await getStations()
   stations.value = data
   refreshTimer = setInterval(fetchList, 10_000)
 })
-onUnmounted(() => clearInterval(refreshTimer))
 
-// ── Create task ───────────────────────────────────────────────────────────────
+onUnmounted(() => {
+  clearInterval(refreshTimer)
+  clearInterval(pollTimer)
+})
+
+// ── Task submission ────────────────────────────────────────────────────────────
 
 function openCreateDialog() {
   newTask.value = { type: 'band_scan', station_ids: [] }
@@ -262,7 +419,7 @@ function openCreateDialog() {
 
 function buildParams() {
   const pp = p.value
-  const t = newTask.value.type
+  const t  = pageType.value || newTask.value.type
   if (t === 'band_scan') return {
     start_hz: pp.start_mhz * 1e6,
     stop_hz:  pp.stop_mhz  * 1e6,
@@ -275,10 +432,10 @@ function buildParams() {
     dwell_s:  pp.dwell_ms  / 1000,
   }
   if (t === 'if_analysis') return {
-    center_hz:    pp.center_mhz  * 1e6,
-    span_hz:      pp.span_khz    * 1e3,
-    demod_bw_hz:  pp.demod_bw_khz* 1e3,
-    demod_mode:   pp.demod_mode,
+    center_hz:   pp.center_mhz  * 1e6,
+    span_hz:     pp.span_khz    * 1e3,
+    demod_bw_hz: pp.demod_bw_khz * 1e3,
+    demod_mode:  pp.demod_mode,
   }
 }
 
@@ -286,24 +443,42 @@ async function submitTask() {
   createLoading.value = true
   createError.value = ''
   try {
+    const type = pageType.value || newTask.value.type
     const resp = await createTask({
-      type: newTask.value.type,
+      type,
       params: buildParams(),
       station_ids: newTask.value.station_ids,
       stream_fps: 0,
     })
     showCreate.value = false
+    // Set inline result placeholder and start polling
+    activeTask.value = { task_id: resp.task_id, status: 'dispatched', stations: [] }
     await fetchList()
-    // Auto-expand the new task
-    expanded.value = resp.task_id
-    detailLoading.value = true
-    detail.value = await getTask(resp.task_id)
-    detailLoading.value = false
+    startPolling(resp.task_id)
   } catch (e) {
     createError.value = e.response?.data?.detail || e.message
   } finally {
     createLoading.value = false
   }
+}
+
+function startPolling(taskId) {
+  clearInterval(pollTimer)
+  polling.value = true
+  let attempts = 0
+  pollTimer = setInterval(async () => {
+    attempts++
+    if (attempts > 60) { polling.value = false; clearInterval(pollTimer); return }
+    try {
+      const data = await getTask(taskId)
+      activeTask.value = data
+      if (data.status === 'completed' || data.status === 'failed') {
+        polling.value = false
+        clearInterval(pollTimer)
+        fetchList()
+      }
+    } catch { /* ignore transient errors */ }
+  }, 2000)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -324,13 +499,12 @@ function parseJson(s) {
 }
 
 // ── Mini spectrum chart component ─────────────────────────────────────────────
-// Defined as an inline component so it owns its own lifecycle and disposes
-// the ECharts instance on unmount (avoids memory leaks).
 
 const SpectrumMini = defineComponent({
   name: 'SpectrumMini',
   props: { b64: String, meta: Object },
   setup(props) {
+    const { isDark, chartColors } = useTheme()
     const el = ref(null)
     let chart = null
     let alive = true
@@ -348,7 +522,7 @@ const SpectrumMini = defineComponent({
 
       new Response(ds.readable).arrayBuffer().then(buf => {
         if (!alive || !el.value) return
-        if (!chart) chart = echarts.init(el.value, 'dark')
+        if (!chart) chart = echarts.init(el.value, chartColors.value.ecTheme)
 
         const floats = new Float32Array(buf)
         const step   = meta.freq_step_hz  ?? 25_000
@@ -361,26 +535,26 @@ const SpectrumMini = defineComponent({
           grid: { left: 52, right: 8, top: 4, bottom: 24 },
           xAxis: {
             type: 'value', min: 'dataMin', max: 'dataMax',
-            axisLabel: { color: '#64748b', fontSize: 9, formatter: v => v.toFixed(0) },
-            axisLine: { lineStyle: { color: '#1e293b' } },
-            splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+            axisLabel: { color: chartColors.value.axisLabel, fontSize: 9, formatter: v => v.toFixed(0) },
+            axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+            splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
           },
           yAxis: {
             type: 'value',
-            axisLabel: { color: '#64748b', fontSize: 9 },
-            axisLine: { lineStyle: { color: '#1e293b' } },
-            splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+            axisLabel: { color: chartColors.value.axisLabel, fontSize: 9 },
+            axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+            splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
           },
           series: [{
             type: 'line', data,
             symbol: 'none', sampling: 'lttb',
-            lineStyle: { color: '#38bdf8', width: 1 },
+            lineStyle: { color: chartColors.value.accent, width: 1 },
             areaStyle: {
               color: {
                 type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
                 colorStops: [
-                  { offset: 0, color: 'rgba(56,189,248,0.18)' },
-                  { offset: 1, color: 'rgba(56,189,248,0)'    },
+                  { offset: 0, color: chartColors.value.accentFill[0] },
+                  { offset: 1, color: chartColors.value.accentFill[2] },
                 ],
               },
             },
@@ -392,6 +566,10 @@ const SpectrumMini = defineComponent({
     onMounted(() => decode(props.b64, props.meta))
     watch(() => props.b64, () => decode(props.b64, props.meta))
     onUnmounted(() => { alive = false; chart?.dispose(); chart = null })
+    watch(isDark, () => {
+      if (chart) { chart.dispose(); chart = null }
+      decode(props.b64, props.meta)
+    })
 
     return { el }
   },
@@ -400,159 +578,207 @@ const SpectrumMini = defineComponent({
 </script>
 
 <style scoped>
-.task-page { padding-bottom: 32px; }
+.task-page { padding-bottom: 32px; transition: background 0.2s, border-color 0.2s, color 0.2s; }
 .mb24 { margin-bottom: 24px; }
 
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.page-title  { font-size: 24px; font-weight: 700; color: #f1f5f9; }
-.page-sub    { font-size: 13px; color: #64748b; margin-top: 3px; }
+.page-title  { font-size: 24px; font-weight: 700; color: var(--c-text); }
+.page-sub    { font-size: 13px; color: var(--c-text-dim); margin-top: 3px; }
 
 .new-btn {
   padding: 9px 18px; border-radius: 9px;
-  background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.4); color: #38bdf8;
+  background: var(--c-accent-bgx); border: 1px solid var(--c-accent-bd); color: var(--c-accent);
   font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
 }
-.new-btn:hover { background: rgba(56,189,248,0.2); }
+.new-btn:hover { background: var(--c-accent-bgh); }
+
+/* ── Inline scan form card ── */
+.scan-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.scan-card-header {
+  padding: 12px 20px;
+  font-size: 13px; font-weight: 600; color: var(--c-text-dim);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-raised);
+}
+.scan-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.scan-actions { display: flex; justify-content: flex-start; }
+
+/* ── Inline active task result ── */
+.active-task {
+  border-top: 1px solid var(--c-border);
+  padding: 16px 20px;
+  background: var(--c-deep);
+}
+.at-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; font-size: 13px;
+}
+.at-label  { color: var(--c-text-faint); font-size: 12px; }
+.at-id     { font-family: monospace; font-size: 12px; color: var(--c-text-dim); }
+.at-status { color: var(--c-text-muted); }
+.polling-note {
+  font-size: 11px; color: var(--c-accent); margin-left: 4px;
+  animation: pulse-opacity 1.2s infinite;
+}
+@keyframes pulse-opacity { 0%,100% { opacity:1 } 50% { opacity:.3 } }
 
 /* ── Table ── */
-.table-card { background: #080e1c; border: 1px solid #1e293b; border-radius: 14px; overflow: hidden; }
+.table-card { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 14px; overflow: hidden; }
 .table-topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 18px; border-bottom: 1px solid #1e293b;
+  padding: 12px 18px; border-bottom: 1px solid var(--c-border);
 }
-.table-title  { font-size: 13px; color: #64748b; font-weight: 500; }
+.table-title  { font-size: 13px; color: var(--c-text-dim); font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.table-type-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px;
+  background: var(--c-indigo-bg); border: 1px solid var(--c-indigo-bd); color: var(--c-indigo);
+}
 .refresh-btn  {
-  background: none; border: none; color: #475569; font-size: 16px; cursor: pointer;
+  background: none; border: none; color: var(--c-text-faint); font-size: 16px; cursor: pointer;
   transition: transform .3s; line-height: 1;
 }
 .refresh-btn.spinning { animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.loading-row, .empty-row { padding: 32px; text-align: center; color: #334155; font-size: 13px; }
+.loading-row, .empty-row { padding: 32px; text-align: center; color: var(--c-text-ghost); font-size: 13px; }
 
 .task-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .task-table th {
-  background: #060c18; padding: 9px 16px;
+  background: var(--c-bg); padding: 9px 16px;
   text-align: left; font-size: 11px; font-weight: 600;
-  color: #475569; text-transform: uppercase; letter-spacing: .4px;
-  border-bottom: 1px solid #1e293b;
+  color: var(--c-text-faint); text-transform: uppercase; letter-spacing: .4px;
+  border-bottom: 1px solid var(--c-border);
 }
-.task-table td { padding: 11px 16px; border-bottom: 1px solid #0a1224; color: #94a3b8; }
+.task-table td { padding: 11px 16px; border-bottom: 1px solid var(--c-card-2); color: var(--c-text-muted); }
 .task-row { cursor: pointer; transition: background .1s; }
 .task-row:hover td { background: rgba(255,255,255,0.015); }
 
 .type-badge {
   font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500;
-  background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); color: #818cf8;
+  background: var(--c-indigo-bg); border: 1px solid var(--c-indigo-bd); color: var(--c-indigo);
 }
 
 .status-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  margin-right: 6px; background: #334155;
+  margin-right: 6px; background: var(--c-text-ghost);
 }
-.status-dot.pending    { background: #475569; }
-.status-dot.dispatched { background: #fbbf24; }
-.status-dot.running    { background: #38bdf8; animation: pulse .9s infinite; }
-.status-dot.completed  { background: #4ade80; }
-.status-dot.failed     { background: #f87171; }
+.status-dot.pending    { background: var(--c-text-faint); }
+.status-dot.dispatched { background: var(--c-gold); }
+.status-dot.running    { background: var(--c-accent); animation: pulse .9s infinite; }
+.status-dot.completed  { background: var(--c-green); }
+.status-dot.failed     { background: var(--c-red); }
 @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
 
-.cell-id        { font-family: monospace; font-size: 12px; color: #64748b; }
-.cell-ts        { font-size: 11px; color: #475569; }
+.cell-id        { font-family: monospace; font-size: 12px; color: var(--c-text-dim); }
+.cell-ts        { font-size: 11px; color: var(--c-text-faint); }
 .expand-btn     {
-  background: none; border: none; color: #475569; cursor: pointer;
+  background: none; border: none; color: var(--c-text-faint); cursor: pointer;
   font-size: 16px; transition: transform .2s;
 }
 .expand-btn.open { transform: rotate(180deg); }
 
 /* ── Detail panel ── */
-.detail-row td { background: #040810 !important; border-bottom: 1px solid #1e293b; }
+.detail-row td { background: var(--c-deep) !important; border-bottom: 1px solid var(--c-border); }
 .detail-panel { padding: 16px 20px; }
-.detail-loading { color: #475569; font-size: 13px; }
+.detail-loading { color: var(--c-text-faint); font-size: 13px; }
 .detail-params { margin-bottom: 14px; font-size: 12px; }
-.dp-label { color: #475569; }
-.dp-val   { color: #94a3b8; background: #060c18; padding: 2px 8px; border-radius: 5px; }
+.dp-label { color: var(--c-text-faint); }
+.dp-val   { color: var(--c-text-muted); background: var(--c-bg); padding: 2px 8px; border-radius: 5px; }
 
 .station-list { display: flex; flex-direction: column; gap: 12px; }
 .station-item {
-  background: #080e1c; border: 1px solid #1e293b; border-radius: 10px; padding: 12px 16px;
+  background: var(--c-card); border: 1px solid var(--c-border); border-radius: 10px; padding: 12px 16px;
 }
 .si-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-.si-id     { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.si-id     { font-size: 13px; font-weight: 600; color: var(--c-text-2); }
 .si-status {
   font-size: 11px; padding: 1px 7px; border-radius: 5px;
-  background: #1e293b; color: #64748b;
+  background: var(--c-border); color: var(--c-text-dim);
 }
-.si-status.completed { background: rgba(74,222,128,0.1); color: #4ade80; }
-.si-status.failed    { background: rgba(248,113,113,0.1); color: #f87171; }
-.si-status.running   { background: rgba(56,189,248,0.1);  color: #38bdf8; }
-.si-ts     { font-size: 11px; color: #334155; margin-left: auto; }
-.si-error  { font-size: 12px; color: #f87171; padding: 4px 0; }
-.si-meta   { font-size: 11px; color: #475569; font-family: monospace; }
-.si-chart-wrap { margin-top: 10px; border-radius: 8px; overflow: hidden; background: #040810; }
+.si-status.completed { background: var(--c-green-bg); color: var(--c-green); }
+.si-status.failed    { background: var(--c-red-bg); color: var(--c-red); }
+.si-status.running   { background: var(--c-accent-bgx); color: var(--c-accent); }
+.si-ts     { font-size: 11px; color: var(--c-text-ghost); margin-left: auto; }
+.si-error  { font-size: 12px; color: var(--c-red); padding: 4px 0; }
+.si-meta   { font-size: 11px; color: var(--c-text-faint); font-family: monospace; }
+.si-chart-wrap { margin-top: 10px; border-radius: 8px; overflow: hidden; background: var(--c-deep); }
+.offline-note  { font-size: 11px; color: var(--c-text-ghost); }
+
+/* ── Form fields ── */
+.field       { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 11px; font-weight: 600; color: var(--c-text-dim); text-transform: uppercase; letter-spacing: .4px; }
+.req         { color: var(--c-red); }
+.field-row   { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+
+.station-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.stn-check { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--c-text-muted); cursor: pointer; }
+.stn-check input { accent-color: var(--c-accent); }
+.online  { color: var(--c-green); }
+.offline { color: var(--c-text-ghost); }
+
+.num-input, select.num-input {
+  background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 8px;
+  color: var(--c-text-2); font-size: 13px; padding: 7px 10px; outline: none;
+}
+
+.create-error { color: var(--c-red); font-size: 12px; padding: 8px 12px; background: var(--c-red-bg); border-radius: 8px; }
+
+.submit-btn {
+  padding: 8px 20px; border-radius: 8px;
+  background: var(--c-accent-bgx); border: 1px solid var(--c-accent-bd); color: var(--c-accent);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; gap: 8px;
+}
+.submit-btn:hover:not(:disabled) { background: var(--c-accent-bgh); }
+.submit-btn:disabled { opacity: .5; cursor: not-allowed; }
+.spinner {
+  width: 13px; height: 13px; border: 2px solid var(--c-border); border-top-color: var(--c-accent);
+  border-radius: 50%; animation: spin .7s linear infinite; display: inline-block;
+}
 
 /* ── Create dialog ── */
 .dialog-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  position: fixed; inset: 0; background: var(--c-overlay-s); backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center; z-index: 1000;
 }
 .dialog {
-  background: #0a0f1e; border: 1px solid #1e293b; border-radius: 16px;
+  background: var(--c-card-2); border: 1px solid var(--c-border); border-radius: 16px;
   width: 600px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
   display: flex; flex-direction: column;
 }
 .dialog-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 18px 22px; border-bottom: 1px solid #1e293b;
+  padding: 18px 22px; border-bottom: 1px solid var(--c-border);
 }
-.dialog-header h3 { font-size: 16px; font-weight: 600; color: #e2e8f0; }
-.close-btn { background: none; border: none; color: #475569; cursor: pointer; font-size: 16px; }
-.close-btn:hover { color: #94a3b8; }
+.dialog-header h3 { font-size: 16px; font-weight: 600; color: var(--c-text-2); }
+.close-btn { background: none; border: none; color: var(--c-text-faint); cursor: pointer; font-size: 16px; }
+.close-btn:hover { color: var(--c-text-muted); }
 .dialog-body   { padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; }
 .dialog-footer {
-  padding: 14px 22px; border-top: 1px solid #1e293b;
+  padding: 14px 22px; border-top: 1px solid var(--c-border);
   display: flex; justify-content: flex-end; gap: 10px;
 }
-
-.field       { display: flex; flex-direction: column; gap: 6px; }
-.field-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
-.req         { color: #f87171; }
-.field-row   { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
 
 .type-tabs { display: flex; gap: 6px; }
 .type-tab {
   padding: 7px 14px; border-radius: 8px; font-size: 13px;
-  border: 1px solid #1e293b; background: transparent; color: #64748b; cursor: pointer;
+  border: 1px solid var(--c-border); background: transparent; color: var(--c-text-dim); cursor: pointer;
 }
-.type-tab:hover  { border-color: #334155; color: #94a3b8; }
-.type-tab.active { background: rgba(56,189,248,0.1); border-color: #38bdf8; color: #38bdf8; }
+.type-tab:hover  { border-color: var(--c-border-str); color: var(--c-text-muted); }
+.type-tab.active { background: var(--c-accent-bgx); border-color: var(--c-accent); color: var(--c-accent); }
 
-.station-checks { display: flex; flex-wrap: wrap; gap: 8px; }
-.stn-check { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #94a3b8; cursor: pointer; }
-.stn-check input { accent-color: #38bdf8; }
-.online  { color: #4ade80; }
-.offline { color: #334155; }
-
-.num-input, select.num-input {
-  background: #060c18; border: 1px solid #1e293b; border-radius: 8px;
-  color: #e2e8f0; font-size: 13px; padding: 7px 10px; outline: none;
-}
-
-.create-error { color: #f87171; font-size: 12px; padding: 8px 12px; background: rgba(239,68,68,0.07); border-radius: 8px; }
 .cancel-btn {
   padding: 8px 18px; border-radius: 8px; background: transparent;
-  border: 1px solid #1e293b; color: #64748b; cursor: pointer;
-}
-.submit-btn {
-  padding: 8px 20px; border-radius: 8px;
-  background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.4); color: #38bdf8;
-  font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
-  display: flex; align-items: center; gap: 8px;
-}
-.submit-btn:hover:not(:disabled) { background: rgba(56,189,248,0.2); }
-.submit-btn:disabled { opacity: .5; cursor: not-allowed; }
-.spinner {
-  width: 13px; height: 13px; border: 2px solid #1e293b; border-top-color: #38bdf8;
-  border-radius: 50%; animation: spin .7s linear infinite; display: inline-block;
+  border: 1px solid var(--c-border); color: var(--c-text-dim); cursor: pointer;
 }
 </style>

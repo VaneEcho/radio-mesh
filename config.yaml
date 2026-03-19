@@ -3,23 +3,26 @@ station:
   name: Local Dev Station
 
 device:
-  type: mock
-  scan_delay_s: 0.0
-  seed: 42
-  step_hz: 25000
+  type: rsa306b
+  device_index: 0       # USB device index (0-based, first attached device)
+  rbw_hz: 10000         # Resolution bandwidth per 40-MHz segment (Hz)
+  trace_length: 801     # Spectrum points per 40-MHz segment
+  ref_level_dbm: 0.0    # Reference level (dBm); lower if input clips, raise if noise floor artefacts appear
+  so_dir: /home/chuan/radio-mesh/docs/RSA_API-1.0.0014/     # Directory containing libRSA_API.so and libcyusb_shared.so
 
 scan:
-  start_hz: 87500000    # 87.5 MHz
-  stop_hz:  108000000   # 108 MHz (FM band only, fast for dev)
+  start_hz: 100000000   # 100 MHz
+  stop_hz:  3600000000  # 3.6 GHz
 
 aggregation:
   interval_s: 60
 
 cloud:
-  enabled: false
+  enabled: true
   url: http://localhost:8000
   upload_path: /api/v1/spectrum/bundle
   token: ""
+  stream_fps: 2.0       # Max frames per second pushed to cloud over WebSocket (0 = disable)
 
 debug:
   dump_raw_frames: false

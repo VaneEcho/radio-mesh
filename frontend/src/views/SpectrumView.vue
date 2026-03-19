@@ -97,9 +97,11 @@ import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import pako from 'pako'
 import { querySpectrum } from '../api/index.js'
+import { useTheme } from '../composables/useTheme.js'
 
 const route = useRoute()
 const stationId = route.params.stationId
+const { isDark, chartColors } = useTheme()
 
 const PRESETS = [
   { label: '1 小时', value: '1h' },
@@ -180,7 +182,11 @@ const TARGET_POINTS = 2000
 
 function maxPool(freqs, levels, target) {
   const n = freqs.length
-  if (n <= target) return { freqs, levels }
+  if (n <= target) {
+    const out = new Array(n)
+    for (let i = 0; i < n; i++) out[i] = [freqs[i], levels[i]]
+    return out
+  }
   const out = new Array(target)
   const binSize = n / target
   for (let i = 0; i < target; i++) {
@@ -232,7 +238,7 @@ function decodeFrame(frame) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   const raw    = pako.inflate(bytes)
   const levels = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4)
-  const freqs  = new Float32Array(levels.length)
+  const freqs  = new Float64Array(levels.length)
   const start  = frame.freq_start_hz / 1e6
   const step   = frame.freq_step_hz  / 1e6
   for (let i = 0; i < levels.length; i++) freqs[i] = start + i * step
@@ -244,7 +250,7 @@ function decodeFrame(frame) {
 function buildChart() {
   if (!chartEl.value) return
   if (chart) chart.dispose()
-  chart = echarts.init(chartEl.value, 'dark')
+  chart = echarts.init(chartEl.value, chartColors.value.ecTheme)
   window.__rfmeshChart = chart
 }
 
@@ -276,48 +282,48 @@ function renderFrame(frame) {
     tooltip: {
       trigger: 'axis',
       formatter: ([p]) => `<span style="color:#94a3b8;font-size:11px">${p.data[0].toFixed(4)} MHz</span><br/><b style="color:#e2e8f0;font-size:13px">${p.data[1].toFixed(1)} dBm</b>`,
-      backgroundColor: '#0f172a',
-      borderColor: '#334155',
+      backgroundColor: chartColors.value.tooltipBg,
+      borderColor: chartColors.value.tooltipBorder,
       borderWidth: 1,
       padding: [8, 12],
-      textStyle: { color: '#e2e8f0', fontSize: 12 },
+      textStyle: { color: chartColors.value.tooltipText, fontSize: 12 },
     },
     xAxis: {
       type: 'value',
       name: 'MHz',
       nameLocation: 'end',
-      nameTextStyle: { color: '#64748b', fontSize: 11 },
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 11 },
       min: minFreq,
       max: maxFreq,
-      axisLabel: { color: '#64748b', fontSize: 11, formatter: v => v.toFixed(0) },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 11, formatter: v => v.toFixed(0) },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
     yAxis: {
       type: 'value',
       name: 'dBm',
       nameLocation: 'end',
-      nameTextStyle: { color: '#64748b', fontSize: 11 },
-      axisLabel: { color: '#64748b', fontSize: 11 },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } },
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 11 },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 11 },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
       {
         type: 'slider', xAxisIndex: 0, bottom: 6, height: 28,
-        fillerColor: 'rgba(56,189,248,0.08)',
-        borderColor: '#1e293b',
-        handleStyle: { color: '#38bdf8', borderColor: '#38bdf8' },
-        moveHandleStyle: { color: '#38bdf8' },
-        textStyle: { color: '#64748b', fontSize: 10 },
+        fillerColor: chartColors.value.dzFiller,
+        borderColor: chartColors.value.axisLine,
+        handleStyle: { color: chartColors.value.accent, borderColor: chartColors.value.accent },
+        moveHandleStyle: { color: chartColors.value.accent },
+        textStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
         selectedDataBackground: {
-          lineStyle: { color: '#38bdf8', width: 1 },
-          areaStyle: { color: 'rgba(56,189,248,0.06)' },
+          lineStyle: { color: chartColors.value.accent, width: 1 },
+          areaStyle: { color: chartColors.value.dzFiller },
         },
         dataBackground: {
-          lineStyle: { color: '#334155', width: 1 },
-          areaStyle: { color: 'rgba(51,65,85,0.3)' },
+          lineStyle: { color: chartColors.value.axisLine, width: 1 },
+          areaStyle: { color: chartColors.value.dzBg },
         },
       },
     ],
@@ -326,12 +332,12 @@ function renderFrame(frame) {
       data: overviewData,
       sampling: null,     // we do our own max-pool, don't let ECharts subsample further
       symbol: 'none',
-      lineStyle: { color: '#38bdf8', width: 1.5 },
+      lineStyle: { color: chartColors.value.accent, width: 1.5 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(56,189,248,0.25)' },
-          { offset: 0.7, color: 'rgba(56,189,248,0.04)' },
-          { offset: 1, color: 'rgba(56,189,248,0)' },
+          { offset: 0, color: chartColors.value.accentFill[0] },
+          { offset: 0.7, color: chartColors.value.accentFill[1] },
+          { offset: 1, color: chartColors.value.accentFill[2] },
         ]),
       },
     }],
@@ -339,11 +345,24 @@ function renderFrame(frame) {
 
   // On zoom: slice full data and apply max-pool → gives "original resolution" in view
   chart.off('datazoom')
-  chart.on('datazoom', () => {
-    const opt = chart.getOption()
-    const dz  = opt.dataZoom[0]
-    const startPct = dz.start ?? 0
-    const endPct   = dz.end   ?? 100
+  chart.on('datazoom', (e) => {
+    const ev = e.batch?.[0] ?? e
+    if (!_fullFreqs) return
+    let startMHz = ev.startValue
+    let endMHz   = ev.endValue
+    // inside-type dataZoom emits {start, end} percentages, not startValue/endValue.
+    // Convert percentages to MHz when absolute values are absent.
+    if (startMHz == null || endMHz == null) {
+      const minF = _fullFreqs[0]
+      const maxF = _fullFreqs[_fullFreqs.length - 1]
+      startMHz = minF + (maxF - minF) * (ev.start ?? 0)   / 100
+      endMHz   = minF + (maxF - minF) * (ev.end   ?? 100) / 100
+    }
+    if (startMHz == null || endMHz == null) return
+
+    const span     = _fullFreqs[_fullFreqs.length - 1] - _fullFreqs[0]
+    const startPct = (startMHz - _fullFreqs[0]) / span * 100
+    const endPct   = (endMHz   - _fullFreqs[0]) / span * 100
 
     isZoomed.value = startPct > 0.5 || endPct < 99.5
 
@@ -354,10 +373,10 @@ function renderFrame(frame) {
       return
     }
 
-    // Find index range in full arrays
-    const totalLen = _fullFreqs.length
-    const lo = Math.max(0,         Math.floor(startPct / 100 * totalLen))
-    const hi = Math.min(totalLen,  Math.ceil(endPct   / 100 * totalLen))
+    // Find index range in full arrays using actual frequency values
+    const step = span / (_fullFreqs.length - 1)
+    const lo = Math.max(0,              Math.floor((startMHz - _fullFreqs[0]) / step))
+    const hi = Math.min(_fullFreqs.length, Math.ceil((endMHz   - _fullFreqs[0]) / step) + 1)
 
     const { data, raw } = buildData(_fullFreqs, _fullLevels, lo, hi, TARGET_POINTS)
     isShowingRaw.value = raw
@@ -370,6 +389,13 @@ watch(currentFrame, async (frame) => {
   await nextTick()
   if (!chart) buildChart()
   renderFrame(frame)
+})
+
+watch(isDark, async () => {
+  if (!chart || !currentFrame.value) return
+  await nextTick()
+  buildChart()
+  renderFrame(currentFrame.value)
 })
 
 function onResize() { chart?.resize() }
@@ -392,24 +418,24 @@ onUnmounted(() => {
 
 /* ── Breadcrumb ── */
 .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.bc-link { color: #38bdf8; text-decoration: none; }
+.bc-link { color: var(--c-accent); text-decoration: none; }
 .bc-link:hover { text-decoration: underline; }
-.bc-sep { color: #334155; }
-.bc-cur { color: #64748b; }
+.bc-sep { color: var(--c-border-str); }
+.bc-cur { color: var(--c-text-dim); }
 
 /* ── Page header ── */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.page-title  { font-size: 24px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
-.page-sub    { font-size: 13px; color: #64748b; margin-top: 3px; }
+.page-title  { font-size: 24px; font-weight: 700; color: var(--c-text); letter-spacing: -0.3px; }
+.page-sub    { font-size: 13px; color: var(--c-text-dim); margin-top: 3px; }
 
 .header-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .badge {
   font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
   border: 1px solid; white-space: nowrap;
 }
-.badge-freq  { background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.3); color: #38bdf8; }
-.badge-pts   { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.3); color: #818cf8; }
-.badge-sweep { background: rgba(34,197,94,0.08);  border-color: rgba(34,197,94,0.3);  color: #4ade80; }
+.badge-freq  { background: var(--c-accent-bgx); border-color: var(--c-accent-bds); color: var(--c-accent); }
+.badge-pts   { background: var(--c-indigo-bg); border-color: var(--c-indigo-bd); color: var(--c-indigo); }
+.badge-sweep { background: var(--c-green-bg); border-color: var(--c-green-bd); color: var(--c-green); }
 
 /* ── Query bar ── */
 .query-bar {
@@ -417,8 +443,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
   border-radius: 12px;
   padding: 12px 16px;
 }
@@ -426,25 +452,25 @@ onUnmounted(() => {
 .preset-btn {
   padding: 5px 14px;
   border-radius: 8px;
-  border: 1px solid #1e293b;
+  border: 1px solid var(--c-border);
   background: transparent;
-  color: #64748b;
+  color: var(--c-text-dim);
   font-size: 13px;
   cursor: pointer;
   transition: all .15s;
 }
-.preset-btn:hover  { border-color: #334155; color: #94a3b8; }
-.preset-btn.active { background: rgba(56,189,248,0.12); border-color: #38bdf8; color: #38bdf8; }
+.preset-btn:hover  { border-color: var(--c-border-str); color: var(--c-text-muted); }
+.preset-btn.active { background: var(--c-accent-bgh); border-color: var(--c-accent); color: var(--c-accent); }
 
 .custom-range { display: flex; align-items: center; gap: 10px; }
-.range-to { color: #334155; }
+.range-to { color: var(--c-border-str); }
 
-.query-status { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 13px; }
+.query-status { display: flex; align-items: center; gap: 8px; color: var(--c-text-dim); font-size: 13px; }
 .spinner {
   display: inline-block;
   width: 14px; height: 14px;
-  border: 2px solid #1e293b;
-  border-top-color: #38bdf8;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-accent);
   border-radius: 50%;
   animation: spin .7s linear infinite;
 }
@@ -453,20 +479,20 @@ onUnmounted(() => {
 /* ── Error ── */
 .error-bar {
   display: flex; justify-content: space-between; align-items: center;
-  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3);
-  border-radius: 10px; padding: 10px 16px; color: #f87171; font-size: 13px;
+  background: var(--c-red-bg); border: 1px solid var(--c-red-bd);
+  border-radius: 10px; padding: 10px 16px; color: var(--c-red); font-size: 13px;
 }
-.error-close { background: none; border: none; color: #f87171; font-size: 18px; cursor: pointer; }
+.error-close { background: none; border: none; color: var(--c-red); font-size: 18px; cursor: pointer; }
 
 /* ── Empty ── */
 .empty-state { text-align: center; padding: 80px 0; }
 .empty-icon  { font-size: 48px; margin-bottom: 12px; opacity: .4; }
-.empty-text  { color: #475569; font-size: 14px; }
+.empty-text  { color: var(--c-text-faint); font-size: 14px; }
 
 /* ── Chart card ── */
 .chart-card {
-  background: #0a0f1e;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   overflow: hidden;
 }
@@ -475,35 +501,35 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px 12px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--c-border);
 }
 .chart-title { display: flex; align-items: center; gap: 10px; }
-.chart-time  { font-size: 13px; color: #94a3b8; font-weight: 500; }
+.chart-time  { font-size: 13px; color: var(--c-text-muted); font-weight: 500; }
 .zoom-badge  {
   font-size: 11px; padding: 2px 8px; border-radius: 6px;
-  background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24;
+  background: var(--c-gold-bg); border: 1px solid var(--c-gold-bd); color: var(--c-gold);
 }
 .chart-actions { display: flex; gap: 8px; }
 .action-btn {
   padding: 4px 12px; border-radius: 7px;
-  border: 1px solid #334155; background: transparent; color: #64748b;
+  border: 1px solid var(--c-border-str); background: transparent; color: var(--c-text-dim);
   font-size: 12px; cursor: pointer; transition: all .15s;
 }
-.action-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+.action-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
 
 .chart-area { width: 100%; height: 460px; }
 
 /* ── Timeline ── */
 .tl-card {
-  background: #0a0f1e;
-  border: 1px solid #1e293b;
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
   padding: 16px 20px;
 }
 .tl-header {
-  font-size: 13px; color: #64748b; margin-bottom: 12px; font-weight: 500;
+  font-size: 13px; color: var(--c-text-dim); margin-bottom: 12px; font-weight: 500;
 }
-.tl-count { color: #334155; font-weight: 400; }
+.tl-count { color: var(--c-border-str); font-weight: 400; }
 
 .timeline {
   display: flex;
@@ -515,17 +541,17 @@ onUnmounted(() => {
 .tl-item {
   padding: 5px 10px;
   border-radius: 8px;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
   cursor: pointer;
   transition: all .15s;
   text-align: center;
   min-width: 64px;
 }
-.tl-item:hover { border-color: #334155; }
-.tl-item.active { background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.5); }
+.tl-item:hover { border-color: var(--c-border-str); }
+.tl-item.active { background: var(--c-accent-bgx); border-color: var(--c-accent-bd); }
 
-.tl-time   { font-size: 11px; color: #64748b; }
-.tl-sweeps { font-size: 10px; color: #475569; margin-top: 1px; }
-.tl-item.active .tl-time { color: #38bdf8; }
+.tl-time   { font-size: 11px; color: var(--c-text-dim); }
+.tl-sweeps { font-size: 10px; color: var(--c-text-faint); margin-top: 1px; }
+.tl-item.active .tl-time { color: var(--c-accent); }
 </style>

@@ -59,51 +59,17 @@
     <div v-if="waterfall.length > 0" class="section-title">瀑布图（最近 {{ waterfall.length }} 帧）</div>
     <div v-if="waterfall.length > 0" ref="wfEl" class="wf-wrap"></div>
 
-    <!-- ── Audio Player ── -->
-    <div v-if="connected" class="audio-panel">
-      <div class="audio-panel-header">
-        <span class="section-title" style="margin:0">解调音频</span>
-        <span class="audio-status" :class="audioConnected ? 'audio-status-live' : ''">
-          {{ audioConnected ? '● 实时' : '○ 未连接' }}
-        </span>
-      </div>
-      <div class="audio-controls">
-        <button
-          class="btn btn-sm"
-          :class="audioConnected ? 'btn-danger' : 'btn-secondary'"
-          @click="audioConnected ? disconnectAudio() : connectAudio()"
-        >
-          {{ audioConnected ? '停止音频' : '订阅音频' }}
-        </button>
-        <template v-if="audioConnected">
-          <button class="btn btn-sm btn-secondary" @click="togglePlay" :title="playing ? '暂停' : '播放'">
-            {{ playing ? '⏸ 暂停' : '▶ 播放' }}
-          </button>
-          <input
-            type="range" min="0" max="1" step="0.05"
-            v-model="volume"
-            @input="onVolumeChange"
-            class="volume-slider"
-            title="音量"
-          />
-          <span class="audio-meta">{{ audioChunkCount }} 块 · {{ audioSampleRate }} Hz</span>
-          <span v-if="audioTimeDrift !== null" class="audio-drift" :class="Math.abs(audioTimeDrift) > 500 ? 'drift-warn' : ''">
-            偏移 {{ audioTimeDrift > 0 ? '+' : '' }}{{ audioTimeDrift }} ms
-          </span>
-        </template>
-      </div>
-      <p class="audio-hint" v-if="!audioConnected">
-        当边缘节点执行 IF Analysis 任务时，此处可订阅实时解调音频流（与频谱帧时间戳对齐）
-      </p>
-    </div>
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useTheme } from '../composables/useTheme.js'
 import { getStations } from '../api/index.js'
+
+const { isDark, chartColors } = useTheme()
 
 // ── Station list ──────────────────────────────────────────────────────────────
 
@@ -135,7 +101,7 @@ let   chart   = null
 
 function initChart() {
   if (!chartEl.value || chart) return
-  chart = echarts.init(chartEl.value, 'dark')
+  chart = echarts.init(chartEl.value, chartColors.value.ecTheme)
   chart.setOption({
     backgroundColor: 'transparent',
     animation: false,
@@ -143,32 +109,50 @@ function initChart() {
     xAxis: {
       type: 'value',
       name: 'MHz',
-      nameTextStyle: { color: '#64748b', fontSize: 10 },
-      axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v.toFixed(0) },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#0f1a2e', type: 'dashed' } },
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 10, formatter: v => v.toFixed(0) },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
     yAxis: {
       type: 'value',
       name: 'dBm',
-      nameTextStyle: { color: '#64748b', fontSize: 10 },
+      nameTextStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
       min: -120, max: -20,
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-      splitLine: { lineStyle: { color: '#0f1a2e', type: 'dashed' } },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 10 },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
+      splitLine: { lineStyle: { color: chartColors.value.splitLine, type: 'dashed' } },
     },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      {
+        type: 'slider', xAxisIndex: 0, bottom: 6, height: 24,
+        fillerColor: chartColors.value.dzFiller,
+        borderColor: chartColors.value.axisLine,
+        handleStyle: { color: chartColors.value.accent, borderColor: chartColors.value.accent },
+        textStyle: { color: chartColors.value.axisLabel, fontSize: 10 },
+        selectedDataBackground: {
+          lineStyle: { color: chartColors.value.accent, width: 1 },
+          areaStyle: { color: chartColors.value.dzFiller },
+        },
+        dataBackground: {
+          lineStyle: { color: chartColors.value.axisLine, width: 1 },
+          areaStyle: { color: chartColors.value.dzBg },
+        },
+      },
+    ],
     series: [{
       type: 'line',
       data: [],
       symbol: 'none',
       sampling: 'lttb',
-      lineStyle: { color: '#38bdf8', width: 1 },
+      lineStyle: { color: chartColors.value.accent, width: 1 },
       areaStyle: {
         color: {
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: 'rgba(56,189,248,0.22)' },
-            { offset: 1, color: 'rgba(56,189,248,0)'    },
+            { offset: 0, color: chartColors.value.accentFill[1] },
+            { offset: 1, color: chartColors.value.accentFill[2] },
           ],
         },
       },
@@ -184,11 +168,11 @@ function updateChart(floats, meta) {
   const f0   = meta.freq_start_hz ?? 20e6
   const data = Array.from(floats, (v, i) => [(f0 + i * step) / 1e6, Math.round(v * 10) / 10])
 
-  chart.setOption({ series: [{ data }] }, false)
+  const fStart = f0 / 1e6
+  const fStop  = (f0 + (floats.length - 1) * step) / 1e6
+  chart.setOption({ xAxis: { min: fStart, max: fStop }, series: [{ data }] }, false)
 
-  const fStart = (f0 / 1e6).toFixed(1)
-  const fStop  = ((f0 + (floats.length - 1) * step) / 1e6).toFixed(1)
-  rangeText.value = `${fStart} – ${fStop} MHz`
+  rangeText.value = `${fStart.toFixed(1)} – ${fStop.toFixed(1)} MHz`
 }
 
 // ── Waterfall ─────────────────────────────────────────────────────────────────
@@ -201,15 +185,15 @@ let   wfChart  = null
 function initWfChart(numPts) {
   if (!wfEl.value) return
   if (wfChart) { wfChart.dispose(); wfChart = null }
-  wfChart = echarts.init(wfEl.value, 'dark')
+  wfChart = echarts.init(wfEl.value, chartColors.value.ecTheme)
   wfChart.setOption({
     backgroundColor: 'transparent',
     animation: false,
     grid: { left: 60, right: 16, top: 8, bottom: 36 },
     xAxis: {
       type: 'value',
-      axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v.toFixed(0) + ' MHz' },
-      axisLine: { lineStyle: { color: '#1e293b' } },
+      axisLabel: { color: chartColors.value.axisLabel, fontSize: 10, formatter: v => v.toFixed(0) + ' MHz' },
+      axisLine: { lineStyle: { color: chartColors.value.axisLine } },
       splitLine: { show: false },
     },
     yAxis: {
@@ -265,14 +249,9 @@ function updateWaterfall(floats, meta) {
 
 // ── Frame decode ──────────────────────────────────────────────────────────────
 
-// Track last spectrum frame timestamp for audio sync
-let lastFrameTimestampMs = null
-
 async function decodeFrame(msg) {
   const { b64, meta } = msg
   if (!b64 || !meta) return
-
-  if (msg.timestamp_ms) lastFrameTimestampMs = msg.timestamp_ms
 
   const binary = atob(b64)
   const bytes  = new Uint8Array(binary.length)
@@ -337,7 +316,6 @@ function connect() {
 }
 
 function disconnect() {
-  disconnectAudio()
   if (ws) { ws.close(); ws = null }
 }
 
@@ -354,153 +332,18 @@ function stopFpsTimer() {
   fpsDisplay.value = '—'
 }
 
-// ── Audio WebSocket + Web Audio API ──────────────────────────────────────────
-
-const audioConnected  = ref(false)
-const playing         = ref(true)
-const volume          = ref(0.8)
-const audioChunkCount = ref(0)
-const audioSampleRate = ref(0)
-const audioTimeDrift  = ref(null)
-
-let audioWs      = null
-let audioCtx     = null
-let gainNode     = null
-
-// Timestamp alignment: map audio timestamp_ms → AudioContext time
-// We keep the most recent (spectrumTs, audioCtxTime) pair and use it to
-// schedule audio buffers at the correct playback position.
-let anchorSpecMs  = null   // last spectrum frame timestamp_ms
-let anchorCtxTime = null   // AudioContext.currentTime at that spectrum frame
-
-// Latency buffer: schedule audio ~150 ms ahead to allow for decode jitter
-const LATENCY_OFFSET_S = 0.15
-
-function connectAudio() {
-  if (!selectedStation.value || audioConnected.value) return
-
-  // Create AudioContext on first user gesture (browser policy)
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-    gainNode = audioCtx.createGain()
-    gainNode.gain.value = volume.value
-    gainNode.connect(audioCtx.destination)
-  }
-  if (audioCtx.state === 'suspended') audioCtx.resume()
-
-  const url = `${wsBase()}/api/v1/audio/${selectedStation.value}/ws`
-  audioWs = new WebSocket(url)
-
-  audioWs.onopen = () => {
-    audioConnected.value = true
-    audioChunkCount.value = 0
-  }
-
-  audioWs.onmessage = ({ data }) => {
-    let msg
-    try { msg = JSON.parse(data) } catch { return }
-    if (msg.type === 'audio_chunk') handleAudioChunk(msg)
-  }
-
-  audioWs.onerror = () => { audioConnected.value = false }
-
-  audioWs.onclose = () => {
-    audioConnected.value = false
-    audioWs = null
-  }
-}
-
-function disconnectAudio() {
-  if (audioWs) { audioWs.close(); audioWs = null }
-  audioConnected.value = false
-  audioTimeDrift.value = null
-}
-
-function handleAudioChunk(msg) {
-  if (!playing.value || !audioCtx || !gainNode) return
-
-  const {
-    pcm_b64,
-    timestamp_ms,
-    sample_rate = 16000,
-    channels    = 1,
-  } = msg
-
-  audioSampleRate.value  = sample_rate
-  audioChunkCount.value += 1
-
-  // Decode base64 → Int16Array (PCM S16LE)
-  let pcmBytes
-  try {
-    const bstr = atob(pcm_b64)
-    pcmBytes   = new Uint8Array(bstr.length)
-    for (let i = 0; i < bstr.length; i++) pcmBytes[i] = bstr.charCodeAt(i)
-  } catch {
-    return
-  }
-
-  const pcm16 = new Int16Array(pcmBytes.buffer)
-  const numSamples = pcm16.length / channels
-
-  // Convert Int16 → Float32 in range [-1, 1]
-  const audioBuf = audioCtx.createBuffer(channels, numSamples, sample_rate)
-  for (let ch = 0; ch < channels; ch++) {
-    const channelData = audioBuf.getChannelData(ch)
-    for (let i = 0; i < numSamples; i++) {
-      channelData[i] = pcm16[i * channels + ch] / 32768
-    }
-  }
-
-  // ── Time alignment ──────────────────────────────────────────────────────────
-  // Use the most recent spectrum frame anchor to decide when to schedule
-  // playback, keeping audio synchronized with the displayed spectrum.
-  let scheduleAt = audioCtx.currentTime + LATENCY_OFFSET_S
-
-  if (timestamp_ms && lastFrameTimestampMs && anchorCtxTime !== null) {
-    // How far ahead/behind is this audio chunk relative to last spectrum frame?
-    const deltaMs = timestamp_ms - lastFrameTimestampMs
-    const targetCtxTime = anchorCtxTime + deltaMs / 1000 + LATENCY_OFFSET_S
-    if (targetCtxTime > audioCtx.currentTime) {
-      scheduleAt = targetCtxTime
-    }
-    audioTimeDrift.value = Math.round(
-      (scheduleAt - audioCtx.currentTime - LATENCY_OFFSET_S) * 1000
-    )
-  }
-
-  // Update anchor from latest spectrum frame
-  if (lastFrameTimestampMs !== null) {
-    anchorSpecMs  = lastFrameTimestampMs
-    anchorCtxTime = audioCtx.currentTime
-  }
-
-  const source = audioCtx.createBufferSource()
-  source.buffer = audioBuf
-  source.connect(gainNode)
-  source.start(scheduleAt)
-}
-
-function togglePlay() {
-  playing.value = !playing.value
-  if (audioCtx) {
-    if (!playing.value) {
-      audioCtx.suspend()
-    } else {
-      audioCtx.resume()
-    }
-  }
-}
-
-function onVolumeChange() {
-  if (gainNode) gainNode.gain.value = parseFloat(volume.value)
-}
-
 // ── Resize handling ───────────────────────────────────────────────────────────
 
 function onResize() {
   chart?.resize()
   wfChart?.resize()
 }
+
+watch(isDark, () => {
+  if (chart) { chart.dispose(); chart = null }
+  if (wfChart) { wfChart.dispose(); wfChart = null }
+  // Charts will be re-initialized naturally when next frame arrives
+})
 
 onMounted(() => {
   window.addEventListener('resize', onResize)
@@ -512,7 +355,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   chart?.dispose();   chart   = null
   wfChart?.dispose(); wfChart = null
-  if (audioCtx) { audioCtx.close(); audioCtx = null }
 })
 </script>
 
@@ -522,6 +364,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 20px;
   min-height: 100%;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
 /* ── Header ── */
@@ -535,12 +378,12 @@ onUnmounted(() => {
 .page-title {
   font-size: 20px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--c-text);
   margin-bottom: 4px;
 }
 .page-sub {
   font-size: 12px;
-  color: #475569;
+  color: var(--c-text-faint);
 }
 
 .ctrl-row {
@@ -551,10 +394,10 @@ onUnmounted(() => {
 }
 
 .station-select {
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
   border-radius: 8px;
-  color: #e2e8f0;
+  color: var(--c-text-2);
   padding: 7px 12px;
   font-size: 13px;
   min-width: 180px;
@@ -573,9 +416,9 @@ onUnmounted(() => {
 }
 .btn:hover { opacity: .85; }
 .btn:disabled { opacity: .35; cursor: default; }
-.btn-primary   { background: #38bdf8; color: #0c1a2e; }
-.btn-danger    { background: #ef4444; color: #fff; }
-.btn-secondary { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+.btn-primary   { background: var(--c-accent); color: var(--c-deep); }
+.btn-danger    { background: var(--c-red); color: #fff; }
+.btn-secondary { background: var(--c-border); color: var(--c-text-muted); border: 1px solid var(--c-border-str); }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 
 /* ── Status bar ── */
@@ -584,9 +427,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #64748b;
-  background: #0a1020;
-  border: 1px solid #0f1a2e;
+  color: var(--c-text-dim);
+  background: var(--c-card-2);
+  border: 1px solid var(--c-border-sub);
   border-radius: 8px;
   padding: 8px 14px;
 }
@@ -595,19 +438,19 @@ onUnmounted(() => {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dot-green { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
-.dot-grey  { background: #334155; }
-.status-text { color: #94a3b8; }
-.sep { color: #1e293b; }
+.dot-green { background: var(--c-green); box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+.dot-grey  { background: var(--c-text-ghost); }
+.status-text { color: var(--c-text-muted); }
+.sep { color: var(--c-border); }
 
 /* ── Chart ── */
 .chart-wrap {
   position: relative;
-  background: #080e1c;
-  border: 1px solid #0f1a2e;
+  background: var(--c-card);
+  border: 1px solid var(--c-border-sub);
   border-radius: 12px;
   overflow: hidden;
-  height: 280px;
+  height: 320px;
 }
 
 .chart-canvas {
@@ -623,7 +466,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  color: #334155;
+  color: var(--c-text-ghost);
   font-size: 13px;
   pointer-events: none;
 }
@@ -632,81 +475,17 @@ onUnmounted(() => {
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--c-text-faint);
   text-transform: uppercase;
   letter-spacing: .06em;
 }
 
 .wf-wrap {
-  background: #080e1c;
-  border: 1px solid #0f1a2e;
+  background: var(--c-card);
+  border: 1px solid var(--c-border-sub);
   border-radius: 12px;
   overflow: hidden;
   height: 200px;
 }
 
-/* ── Audio panel ── */
-.audio-panel {
-  background: #0a1020;
-  border: 1px solid #0f1a2e;
-  border-radius: 12px;
-  padding: 14px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.audio-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.audio-status {
-  font-size: 11px;
-  color: #475569;
-  font-weight: 500;
-}
-.audio-status-live {
-  color: #22c55e;
-  text-shadow: 0 0 6px #22c55e66;
-}
-
-.audio-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.volume-slider {
-  -webkit-appearance: none;
-  width: 100px;
-  height: 4px;
-  border-radius: 2px;
-  background: #1e293b;
-  cursor: pointer;
-  accent-color: #38bdf8;
-}
-
-.audio-meta {
-  font-size: 11px;
-  color: #475569;
-}
-
-.audio-drift {
-  font-size: 11px;
-  color: #64748b;
-  font-family: monospace;
-}
-.drift-warn {
-  color: #f59e0b;
-}
-
-.audio-hint {
-  font-size: 11px;
-  color: #334155;
-  margin: 0;
-  line-height: 1.5;
-}
 </style>

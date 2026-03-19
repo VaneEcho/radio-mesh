@@ -68,6 +68,7 @@ async def query_freq_timeseries(
     start_ms: int  = Query(..., description="Window start (Unix ms)"),
     end_ms: int    = Query(..., description="Window end (Unix ms)"),
     station_ids: str = Query("", description="Comma-separated station IDs; empty = all"),
+    bandwidth_hz: float = Query(25_000, ge=1, description="Analysis bandwidth in Hz; max level within [freq±bw/2] is used"),
 ) -> FreqTimeseriesResponse:
     """
     Extract the power level at a single frequency from every stored frame,
@@ -85,7 +86,7 @@ async def query_freq_timeseries(
     loop = asyncio.get_running_loop()
     raw = await loop.run_in_executor(
         None,
-        partial(db.query_freq_timeseries, freq_hz, start_ms, end_ms, sids),
+        partial(db.query_freq_timeseries, freq_hz, start_ms, end_ms, sids, bandwidth_hz),
     )
 
     # Fetch station names for display
@@ -111,6 +112,7 @@ async def query_freq_timeseries(
 
     return FreqTimeseriesResponse(
         freq_hz=freq_hz,
+        bandwidth_hz=bandwidth_hz,
         start_ms=start_ms,
         end_ms=end_ms,
         stations=station_series,
